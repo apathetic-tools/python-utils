@@ -7,7 +7,7 @@ import math
 
 import pytest
 
-import apathetic_utils.text as amod_utils_text
+import apathetic_utils as mod_autils
 
 
 @pytest.mark.parametrize(
@@ -47,7 +47,7 @@ def test_plural_behavior(value: object, expected: str) -> None:
     and '' for singular ones (1 or length == 1).
     """
     # --- execute ---
-    result = amod_utils_text.plural(value)
+    result = mod_autils.plural(value)
 
     # --- verify ---
     assert result == expected, f"{value!r} → {result!r}, expected {expected!r}"
@@ -63,7 +63,7 @@ def test_plural_custom_len_error_fallback() -> None:
             raise TypeError(xmsg)
 
     # --- execute ---
-    result = amod_utils_text.plural(Weird())
+    result = mod_autils.plural(Weird())
 
     # --- verify ---
     assert result == "s", "Expected fallback to plural form on len() failure"

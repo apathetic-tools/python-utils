@@ -302,9 +302,3 @@ class ApatheticUtils_Internal_Matching:  # noqa: N801  # pyright: ignore[reportU
                 return True
 
         return False
-
-
-# Export functions for direct import from submodule
-fnmatchcase_portable = ApatheticUtils_Internal_Matching.fnmatchcase_portable
-is_excluded_raw = ApatheticUtils_Internal_Matching.is_excluded_raw
-_compile_glob_recursive = ApatheticUtils_Internal_Matching._compile_glob_recursive  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]

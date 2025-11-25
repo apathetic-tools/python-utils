@@ -3,7 +3,7 @@
 
 import pytest
 
-import apathetic_utils.paths as amod_utils_paths
+import apathetic_utils as mod_autils
 
 
 @pytest.mark.parametrize(
@@ -40,7 +40,7 @@ def test_normalize_path_string_behavior(
 ) -> None:
     """normalize_path_string() should produce normalized cross-platform paths."""
     # --- execute ---
-    result = amod_utils_paths.normalize_path_string(raw)
+    result = mod_autils.normalize_path_string(raw)
 
     # --- verify ---
     # normalization

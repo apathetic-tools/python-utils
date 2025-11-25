@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-import apathetic_utils.files as amod_utils_files
+import apathetic_utils as mod_autils
 
 
 def test_load_toml_valid_file() -> None:
@@ -22,7 +22,7 @@ version = "1.2.3"
         path = Path(f.name)
 
     try:
-        data = amod_utils_files.load_toml(path)
+        data = mod_autils.load_toml(path)
         assert data is not None
         assert "project" in data
         assert data["project"]["name"] == "test-package"
@@ -34,7 +34,7 @@ version = "1.2.3"
 def test_load_toml_missing_file() -> None:
     """Should raise FileNotFoundError for missing file."""
     with pytest.raises(FileNotFoundError, match="not found"):
-        amod_utils_files.load_toml(Path("/nonexistent/file.toml"))
+        mod_autils.load_toml(Path("/nonexistent/file.toml"))
 
 
 def test_load_toml_invalid_syntax() -> None:
@@ -48,7 +48,7 @@ def test_load_toml_invalid_syntax() -> None:
         # Depending on parser, may raise ValueError or return empty dict
         # Both are acceptable - just ensure it doesn't crash
         try:
-            data = amod_utils_files.load_toml(path)
+            data = mod_autils.load_toml(path)
             # If it doesn't raise, should return something
             assert isinstance(data, dict)
         except ValueError:

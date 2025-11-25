@@ -23,8 +23,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import apathetic_utils.matching as amod_utils_matching
-import apathetic_utils.system as amod_utils_system
+import apathetic_utils as mod_autils
 from tests.utils import patch_everywhere
 
 
@@ -46,8 +45,8 @@ def test_is_excluded_raw_matches_patterns(tmp_path: Path) -> None:
     file.touch()
 
     # --- execute + verify ---
-    assert amod_utils_matching.is_excluded_raw(file, ["foo/*"], root)
-    assert not amod_utils_matching.is_excluded_raw(file, ["baz/*"], root)
+    assert mod_autils.is_excluded_raw(file, ["foo/*"], root)
+    assert not mod_autils.is_excluded_raw(file, ["baz/*"], root)
 
 
 def test_is_excluded_raw_relative_path(tmp_path: Path) -> None:
@@ -69,8 +68,8 @@ def test_is_excluded_raw_relative_path(tmp_path: Path) -> None:
     rel_path = Path("src/file.txt")
 
     # --- execute + verify ---
-    assert amod_utils_matching.is_excluded_raw(rel_path, ["src/*"], root)
-    assert not amod_utils_matching.is_excluded_raw(rel_path, ["dist/*"], root)
+    assert mod_autils.is_excluded_raw(rel_path, ["src/*"], root)
+    assert not mod_autils.is_excluded_raw(rel_path, ["dist/*"], root)
 
 
 def test_is_excluded_raw_outside_root(tmp_path: Path) -> None:
@@ -91,7 +90,7 @@ def test_is_excluded_raw_outside_root(tmp_path: Path) -> None:
     outside.touch()
 
     # --- execute + verify ---
-    assert not amod_utils_matching.is_excluded_raw(outside, ["*.txt"], root)
+    assert not mod_autils.is_excluded_raw(outside, ["*.txt"], root)
 
 
 def test_is_excluded_raw_absolute_pattern(tmp_path: Path) -> None:
@@ -115,8 +114,8 @@ def test_is_excluded_raw_absolute_pattern(tmp_path: Path) -> None:
     abs_pattern = str(root / "a/b/*.txt")
 
     # --- execute + verify ---
-    assert amod_utils_matching.is_excluded_raw(file, [abs_pattern], root)
-    assert not amod_utils_matching.is_excluded_raw(file, [str(root / "x/*.txt")], root)
+    assert mod_autils.is_excluded_raw(file, [abs_pattern], root)
+    assert not mod_autils.is_excluded_raw(file, [str(root / "x/*.txt")], root)
 
 
 def test_is_excluded_raw_file_root_special_case(tmp_path: Path) -> None:
@@ -140,13 +139,13 @@ def test_is_excluded_raw_file_root_special_case(tmp_path: Path) -> None:
     abs_same = root_file
 
     # --- execute + verify ---
-    assert amod_utils_matching.is_excluded_raw(rel_same, [], root_file)
-    assert amod_utils_matching.is_excluded_raw(abs_same, [], root_file)
+    assert mod_autils.is_excluded_raw(rel_same, [], root_file)
+    assert mod_autils.is_excluded_raw(abs_same, [], root_file)
 
     # unrelated file should not match
     other = tmp_path / "other.csv"
     other.touch()
-    assert not amod_utils_matching.is_excluded_raw(other, [], root_file)
+    assert not mod_autils.is_excluded_raw(other, [], root_file)
 
 
 def test_is_excluded_raw_mixed_patterns(tmp_path: Path) -> None:
@@ -169,7 +168,7 @@ def test_is_excluded_raw_mixed_patterns(tmp_path: Path) -> None:
     patterns = ["*.py", "dir/*.tmp", "ignore/*"]
 
     # --- execute + verify ---
-    assert amod_utils_matching.is_excluded_raw(file, patterns, root)
+    assert mod_autils.is_excluded_raw(file, patterns, root)
 
 
 def test_is_excluded_raw_gitignore_double_star(tmp_path: Path) -> None:
@@ -192,7 +191,7 @@ def test_is_excluded_raw_gitignore_double_star(tmp_path: Path) -> None:
     nested.touch()
 
     # --- execute ---
-    result = amod_utils_matching.is_excluded_raw(nested, ["dir/**/*.py"], root)
+    result = mod_autils.is_excluded_raw(nested, ["dir/**/*.py"], root)
 
     # --- verify ---
     assert result, "Expected True on Python ≥3.11 where '**' is recursive"
@@ -210,13 +209,14 @@ def test_gitignore_double_star_backport_py310(
     # --- patch and execute ---
     # Force utils to think it's running on Python 3.10
     fake_sys = SimpleNamespace(version_info=(3, 10, 0))
+    # Patch on the namespace class where the method actually exists
     patch_everywhere(
         monkeypatch,
-        amod_utils_system,
+        mod_autils.apathetic_utils,
         "get_sys_version_info",
         lambda: fake_sys.version_info,
     )
-    result = amod_utils_matching.is_excluded_raw(nested, ["dir/**/*.py"], root)
+    result = mod_autils.is_excluded_raw(nested, ["dir/**/*.py"], root)
 
     # --- verify ---
     # Assert: backport should match recursively on 3.10
@@ -242,11 +242,11 @@ def test_is_excluded_raw_double_star_outside_root_simple(tmp_path: Path) -> None
     outside_file.touch()
 
     # --- execute + verify ---
-    assert amod_utils_matching.is_excluded_raw(outside_file, ["**/__init__.py"], root)
+    assert mod_autils.is_excluded_raw(outside_file, ["**/__init__.py"], root)
     # Non-matching filename should not match
     other_file = tmp_path / "external" / "pkg" / "module.py"
     other_file.touch()
-    assert not amod_utils_matching.is_excluded_raw(other_file, ["**/__init__.py"], root)
+    assert not mod_autils.is_excluded_raw(other_file, ["**/__init__.py"], root)
 
 
 def test_is_excluded_raw_double_star_outside_root_complex(tmp_path: Path) -> None:
@@ -267,16 +267,12 @@ def test_is_excluded_raw_double_star_outside_root_complex(tmp_path: Path) -> Non
     outside_file.touch()
 
     # --- execute + verify ---
-    assert amod_utils_matching.is_excluded_raw(
-        outside_file, ["**/subdir/__init__.py"], root
-    )
+    assert mod_autils.is_excluded_raw(outside_file, ["**/subdir/__init__.py"], root)
     # File in different subdirectory should not match
     other_file = tmp_path / "external" / "pkg" / "other" / "__init__.py"
     other_file.parent.mkdir(parents=True)
     other_file.touch()
-    assert not amod_utils_matching.is_excluded_raw(
-        other_file, ["**/subdir/__init__.py"], root
-    )
+    assert not mod_autils.is_excluded_raw(other_file, ["**/subdir/__init__.py"], root)
 
 
 def test_is_excluded_raw_double_star_inside_root(tmp_path: Path) -> None:
@@ -297,12 +293,12 @@ def test_is_excluded_raw_double_star_inside_root(tmp_path: Path) -> None:
     inside_file.touch()
 
     # --- execute + verify ---
-    assert amod_utils_matching.is_excluded_raw(inside_file, ["**/__init__.py"], root)
+    assert mod_autils.is_excluded_raw(inside_file, ["**/__init__.py"], root)
     # Nested file should also match
     nested_file = root / "pkg" / "subdir" / "__init__.py"
     nested_file.parent.mkdir(parents=True)
     nested_file.touch()
-    assert amod_utils_matching.is_excluded_raw(nested_file, ["**/__init__.py"], root)
+    assert mod_autils.is_excluded_raw(nested_file, ["**/__init__.py"], root)
 
 
 def test_is_excluded_raw_double_star_nested_pattern(tmp_path: Path) -> None:
@@ -323,7 +319,7 @@ def test_is_excluded_raw_double_star_nested_pattern(tmp_path: Path) -> None:
     nested_file.touch()
 
     # --- execute + verify ---
-    assert amod_utils_matching.is_excluded_raw(nested_file, ["**/subdir/**/*.py"], root)
+    assert mod_autils.is_excluded_raw(nested_file, ["**/subdir/**/*.py"], root)
 
 
 def test_is_excluded_raw_double_star_outside_root_negative(tmp_path: Path) -> None:
@@ -344,12 +340,8 @@ def test_is_excluded_raw_double_star_outside_root_negative(tmp_path: Path) -> No
     outside_file.touch()
 
     # --- execute + verify ---
-    assert not amod_utils_matching.is_excluded_raw(
-        outside_file, ["**/__init__.py"], root
-    )
-    assert not amod_utils_matching.is_excluded_raw(
-        outside_file, ["**/subdir/__init__.py"], root
-    )
+    assert not mod_autils.is_excluded_raw(outside_file, ["**/__init__.py"], root)
+    assert not mod_autils.is_excluded_raw(outside_file, ["**/subdir/__init__.py"], root)
 
 
 def test_is_excluded_raw_double_star_mixed_patterns(tmp_path: Path) -> None:
@@ -371,7 +363,7 @@ def test_is_excluded_raw_double_star_mixed_patterns(tmp_path: Path) -> None:
 
     # --- execute + verify ---
     patterns = ["*.py", "**/__init__.py", "ignore/*"]
-    assert amod_utils_matching.is_excluded_raw(outside_file, patterns, root)
+    assert mod_autils.is_excluded_raw(outside_file, patterns, root)
 
 
 def test_is_excluded_raw_relative_pattern_outside_root(tmp_path: Path) -> None:
@@ -414,12 +406,12 @@ def test_is_excluded_raw_relative_pattern_outside_root(tmp_path: Path) -> None:
     # --- execute + verify ---
     # This should match because the pattern is designed to match files
     # outside the exclude root
-    assert amod_utils_matching.is_excluded_raw(outside_file, [pattern], root)
+    assert mod_autils.is_excluded_raw(outside_file, [pattern], root)
 
     # Non-matching file should not be excluded
     other_file = tmp_path / "src" / "pkg" / "module.py"
     other_file.touch()
-    assert not amod_utils_matching.is_excluded_raw(other_file, [pattern], root)
+    assert not mod_autils.is_excluded_raw(other_file, [pattern], root)
 
 
 def test_is_excluded_raw_relative_pattern_outside_root_complex(tmp_path: Path) -> None:
@@ -449,13 +441,13 @@ def test_is_excluded_raw_relative_pattern_outside_root_complex(tmp_path: Path) -
     pattern = "../../src/**/__init__.py"
 
     # --- execute + verify ---
-    assert amod_utils_matching.is_excluded_raw(outside_file, [pattern], root)
+    assert mod_autils.is_excluded_raw(outside_file, [pattern], root)
 
     # File in different location should not match
     other_file = tmp_path / "other" / "pkg" / "__init__.py"
     other_file.parent.mkdir(parents=True)
     other_file.touch()
-    assert not amod_utils_matching.is_excluded_raw(other_file, [pattern], root)
+    assert not mod_autils.is_excluded_raw(other_file, [pattern], root)
 
 
 def test_is_excluded_raw_relative_pattern_outside_root_specific_file(
@@ -485,4 +477,4 @@ def test_is_excluded_raw_relative_pattern_outside_root_specific_file(
     pattern = "../src/pkg/__init__.py"
 
     # --- execute + verify ---
-    assert amod_utils_matching.is_excluded_raw(outside_file, [pattern], root)
+    assert mod_autils.is_excluded_raw(outside_file, [pattern], root)

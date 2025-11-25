@@ -27,17 +27,18 @@ Test Coverage:
 from functools import _lru_cache_wrapper
 from typing import Any
 
-# Import submodule - works in both installed and singlefile modes
-# (singlefile mode excludes __init__.py but includes submodules)
-import apathetic_utils.matching as amod_utils_matching
+import apathetic_utils as mod_autils
 
 
 class _MockUtils:
     """Mock utils module for testing private functions."""
 
     def __init__(self) -> None:
+        # Access private function via the namespace class
         # Expose the actual function so cache methods work
-        self._compile_glob_recursive = amod_utils_matching._compile_glob_recursive
+        self._compile_glob_recursive = (
+            mod_autils.apathetic_utils._compile_glob_recursive
+        )
 
 
 mod_utils: Any = _MockUtils()
