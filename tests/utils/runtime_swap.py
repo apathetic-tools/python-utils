@@ -28,7 +28,7 @@ from tests.utils.constants import (
 
 from .build_tools import find_shiv
 from .package_detection import find_all_packages_under_path
-from .safe_trace import make_safe_trace
+from .safe_trace import makeSafeTrace
 
 
 if TYPE_CHECKING:
@@ -37,7 +37,7 @@ if TYPE_CHECKING:
 
 # --- helpers --------------------------------------------------------------------
 
-safe_trace = make_safe_trace("🧬")
+safeTrace = makeSafeTrace("🧬")
 
 
 def _mode() -> str:
@@ -169,7 +169,7 @@ def _load_singlefile_mode() -> bool:
         mod: ModuleType = importlib.util.module_from_spec(spec)
         sys.modules[PROGRAM_PACKAGE] = mod
         spec.loader.exec_module(mod)
-        safe_trace(f"Loaded standalone module from {bin_path}")
+        safeTrace(f"Loaded standalone module from {bin_path}")
     except Exception as e:
         # Fail fast with context; this is a config/runtime problem.
         error_name = type(e).__name__
@@ -180,7 +180,7 @@ def _load_singlefile_mode() -> bool:
         )
         raise pytest.UsageError(xmsg) from e
 
-    safe_trace(f"✅ Loaded standalone runtime early from {bin_path}")
+    safeTrace(f"✅ Loaded standalone runtime early from {bin_path}")
     return True
 
 
@@ -203,7 +203,7 @@ def _load_zipapp_mode() -> bool:
     try:
         # Import the module normally - Python's zipapp support handles this
         importlib.import_module(PROGRAM_PACKAGE)
-        safe_trace(f"Loaded zipapp module from {zipapp_path}")
+        safeTrace(f"Loaded zipapp module from {zipapp_path}")
     except Exception as e:
         # Fail fast with context; this is a config/runtime problem.
         error_name = type(e).__name__
@@ -214,5 +214,5 @@ def _load_zipapp_mode() -> bool:
         )
         raise pytest.UsageError(xmsg) from e
 
-    safe_trace(f"✅ Loaded zipapp runtime early from {zipapp_path}")
+    safeTrace(f"✅ Loaded zipapp runtime early from {zipapp_path}")
     return True

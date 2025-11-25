@@ -1,4 +1,4 @@
-# src/serger/utils/utils_matching.py
+# src/apathetic_utils/utils_matching.py
 
 
 import re
@@ -6,7 +6,7 @@ from fnmatch import fnmatchcase
 from functools import lru_cache
 from pathlib import Path
 
-from apathetic_logs import get_logger
+from apathetic_logging import getLogger
 
 from .system import get_sys_version_info
 
@@ -125,7 +125,7 @@ def is_excluded_raw(  # noqa: PLR0911, PLR0912, PLR0915, C901
     The function does not require `root` to exist; if it does not,
     a debug message is logged and matching is purely path-based.
     """
-    logger = get_logger()
+    logger = getLogger()
     root = Path(root).resolve()
     path = Path(path)
 

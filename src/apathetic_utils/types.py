@@ -1,4 +1,4 @@
-# src/serger/utils/utils_types.py
+# src/apathetic_utils/utils_types.py
 
 
 from types import UnionType

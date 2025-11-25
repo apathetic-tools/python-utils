@@ -1,9 +1,9 @@
-# tests/utils/safe_trace.py
+# tests/utils/safeTrace.py
 """Unified trace logger for pytest diagnostics.
 
 Uses monotonic timestamps for ordering and writes directly to sys.__stderr__
 to bypass pytest’s capture system. This makes output visible even during
-setup or import-time execution. Enable by setting TEST_TRACE=1 (or 'true', 'yes').
+setup or import-time execution. Enable by setting safeTrace=1 (or 'true', 'yes').
 """
 
 import builtins
@@ -22,14 +22,14 @@ SAFE_TRACE_ENABLED = os.getenv("SAFE_TRACE", "").lower() in {"1", "true", "yes"}
 _real_time = importlib.import_module("time")
 
 
-def make_safe_trace(icon: str = "🧪") -> Callable[..., Any]:
+def makeSafeTrace(icon: str = "🧪") -> Callable[..., Any]:
     def local_trace(label: str, *args: Any) -> Any:
-        return safe_trace(label, *args, icon=icon)
+        return safeTrace(label, *args, icon=icon)
 
     return local_trace
 
 
-def safe_trace(label: str, *args: Any, icon: str = "🧪") -> None:
+def safeTrace(label: str, *args: Any, icon: str = "🧪") -> None:
     """Emit a synchronized, flush-safe diagnostic line.
 
     Args:

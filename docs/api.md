@@ -477,7 +477,7 @@ except Exception:
 safeTrace(label: str, *args: Any, icon: str = "🧪") -> None
 ```
 
-Debug tracing function for test development. Only active when `TEST_TRACE` environment variable is set.
+Debug tracing function for test development. Only active when `safeTrace` environment variable is set.
 
 **Parameters:**
 
@@ -1730,9 +1730,9 @@ message = f"{ANSIColors.CYAN}Colored text{ANSIColors.RESET}"
 
 ## Testing Utilities
 
-### SAFE_TRACE(label: str, *args: Any, icon: str = "🧵") -> None
+### safeTrace(label: str, *args: Any, icon: str = "🧵") -> None
 
-Debug tracing function for test development. Only active when `TEST_TRACE` environment variable is set.
+Debug tracing function for test development. Only active when `safeTrace` environment variable is set.
 
 **Parameters:**
 
@@ -1742,7 +1742,7 @@ Debug tracing function for test development. Only active when `TEST_TRACE` envir
 | `*args` | Any | Additional arguments to trace |
 | `icon` | str | Icon to use (default: `"🧵"`) |
 
-### make_test_trace(icon: str = "🧵") -> Callable
+### makeSafeTrace(icon: str = "🧵") -> Callable
 
 Create a test trace function with a custom icon.
 
@@ -1755,9 +1755,9 @@ Create a test trace function with a custom icon.
 **Returns:**
 - `Callable`: Test trace function
 
-### SAFE_TRACE_ENABLED: bool
+### safeTrace_ENABLED: bool
 
-Boolean flag indicating if test tracing is enabled (checks `TEST_TRACE` environment variable).
+Boolean flag indicating if test tracing is enabled (checks `safeTrace` environment variable).
 
 ## Compatibility Mode
 

@@ -27,14 +27,14 @@ import serger as app_package
 import serger.meta as mod_meta
 
 import apathetic_utils.system as amod_utils_system
-from tests.utils import PROJ_ROOT, make_test_trace
+from tests.utils import PROJ_ROOT, makeSafeTrace
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-TEST_TRACE = make_test_trace("🪞")
+safeTrace = makeSafeTrace("🪞")
 
 SRC_ROOT = PROJ_ROOT / "src"
 DIST_ROOT = PROJ_ROOT / "dist"
@@ -44,7 +44,7 @@ def list_important_modules() -> list[str]:
     """Return all importable submodules under the package, if available."""
     important: list[str] = []
     if not hasattr(app_package, "__path__"):
-        TEST_TRACE("pkgutil.walk_packages skipped — standalone runtime (no __path__)")
+        safeTrace("pkgutil.walk_packages skipped — standalone runtime (no __path__)")
         important.append(app_package.__name__)
     else:
         for _, name, _ in pkgutil.walk_packages(
@@ -60,30 +60,30 @@ def dump_snapshot(*, include_full: bool = False) -> None:
     """Prints a summary of key modules and (optionally) a full sys.modules dump."""
     mode: str = os.getenv("RUNTIME_MODE", "installed")
 
-    TEST_TRACE("========== SNAPSHOT ===========")
-    TEST_TRACE(f"RUNTIME_MODE={mode}")
+    safeTrace("========== SNAPSHOT ===========")
+    safeTrace(f"RUNTIME_MODE={mode}")
 
     important_modules = list_important_modules()
 
     # Summary: the modules we care about most
-    TEST_TRACE("======= IMPORTANT MODULES =====")
+    safeTrace("======= IMPORTANT MODULES =====")
     for name in important_modules:
         mod = sys.modules.get(name)
         if not mod:
             continue
         origin = getattr(mod, "__file__", None)
-        TEST_TRACE(f"  {name:<25} {origin}")
+        safeTrace(f"  {name:<25} {origin}")
 
     if include_full:
         # Full origin dump
-        TEST_TRACE("======== OTHER MODULES ========")
+        safeTrace("======== OTHER MODULES ========")
         for name, mod in sorted(sys.modules.items()):
             if name in important_modules:
                 continue
             origin = getattr(mod, "__file__", None)
-            TEST_TRACE(f"  {name:<38} {origin}")
+            safeTrace(f"  {name:<38} {origin}")
 
-    TEST_TRACE("===============================")
+    safeTrace("===============================")
 
 
 # ---------------------------------------------------------------------------
@@ -125,8 +125,8 @@ def test_pytest_runtime_cache_integrity() -> None:
         amod_utils_system_actual = amod_utils_system
         utils_file = str(inspect.getsourcefile(amod_utils_system_actual))
     # --- execute ---
-    TEST_TRACE(f"RUNTIME_MODE={mode}")
-    TEST_TRACE(f"{mod_meta.PROGRAM_PACKAGE}.utils.utils_system  → {utils_file}")
+    safeTrace(f"RUNTIME_MODE={mode}")
+    safeTrace(f"{mod_meta.PROGRAM_PACKAGE}.utils.utils_system  → {utils_file}")
 
     if os.getenv("TRACE"):
         dump_snapshot()
@@ -156,17 +156,17 @@ def test_pytest_runtime_cache_integrity() -> None:
         else:
             # Module is from installed package, but that's OK as long as
             # detect_runtime_mode() correctly returns "standalone"
-            TEST_TRACE(
+            safeTrace(
                 f"Note: apathetic_utils.system loaded from installed package "
                 f"({utils_file}), but runtime_mode correctly detected as 'standalone'"
             )
 
         # troubleshooting info
-        TEST_TRACE(
+        safeTrace(
             f"sys.modules['{mod_meta.PROGRAM_PACKAGE}']"
             f" = {sys.modules.get(mod_meta.PROGRAM_PACKAGE)}",
         )
-        TEST_TRACE(
+        safeTrace(
             f"sys.modules['{mod_meta.PROGRAM_PACKAGE}.utils.utils_system']"
             f" = {sys.modules.get(f'{mod_meta.PROGRAM_PACKAGE}.utils.utils_system')}",
         )
@@ -209,7 +209,7 @@ def test_debug_dump_all_module_origins() -> None:
 
     # show total module count for quick glance
     count = sum(1 for name in sys.modules if name.startswith(mod_meta.PROGRAM_PACKAGE))
-    TEST_TRACE(f"Loaded {count} {mod_meta.PROGRAM_PACKAGE} modules total")
+    safeTrace(f"Loaded {count} {mod_meta.PROGRAM_PACKAGE} modules total")
 
     # force visible failure for debugging runs
     xmsg = (

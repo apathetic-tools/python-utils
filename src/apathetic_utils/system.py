@@ -1,4 +1,4 @@
-# src/serger/utils/utils_system.py
+# src/apathetic_utils/utils_system.py
 
 
 import os

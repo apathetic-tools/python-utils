@@ -14,7 +14,7 @@ from .level_validation import validate_test_level
 from .mock_superclass import create_mock_superclass_test
 from .patch_everywhere import patch_everywhere
 from .runtime_swap import runtime_swap
-from .safe_trace import make_safe_trace, safe_trace
+from .safeTrace import makeSafeTrace, safeTrace
 from .strip_common_prefix import strip_common_prefix
 
 
@@ -42,7 +42,7 @@ __all__ = [  # noqa: RUF022
     "runtime_swap",
     # strip_common_prefix
     "strip_common_prefix",
-    # safe_trace
-    "safe_trace",
-    "make_safe_trace",
+    # safeTrace
+    "safeTrace",
+    "makeSafeTrace",
 ]

@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 
 from .constants import PROGRAM_PACKAGE, PROGRAM_SCRIPT
-from .safe_trace import safe_trace
+from .safeTrace import safeTrace
 from .strip_common_prefix import strip_common_prefix
 
 
@@ -82,9 +82,9 @@ def patch_everywhere(  # noqa: PLR0912
             else:
                 raise
     if func_existed:
-        safe_trace(f"Patched {mod_name}.{func_name}")
+        safeTrace(f"Patched {mod_name}.{func_name}")
     else:
-        safe_trace(f"Created and patched {mod_name}.{func_name}")
+        safeTrace(f"Created and patched {mod_name}.{func_name}")
 
     stitch_hints = {"/dist/", "standalone", f"{PROGRAM_SCRIPT}.py"}
     package_prefix = PROGRAM_PACKAGE
@@ -121,5 +121,5 @@ def patch_everywhere(  # noqa: PLR0912
             did_patch = True
 
         if did_patch and id(m) not in patched_ids:
-            safe_trace(f"  also patched {name} (path={_short_path(path)})")
+            safeTrace(f"  also patched {name} (path={_short_path(path)})")
             patched_ids.add(id(m))

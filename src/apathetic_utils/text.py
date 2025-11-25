@@ -1,4 +1,4 @@
-# src/serger/utils/utils_text.py
+# src/apathetic_utils/utils_text.py
 
 
 import re

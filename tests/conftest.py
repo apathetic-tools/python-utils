@@ -15,7 +15,7 @@ from collections.abc import Generator
 
 import pytest
 
-from tests.utils import make_safe_trace, runtime_swap
+from tests.utils import makeSafeTrace, runtime_swap
 from tests.utils.log_fixtures import (
     direct_logger,
     module_logger,
@@ -28,7 +28,7 @@ __all__ = [
     "module_logger",
 ]
 
-safe_trace = make_safe_trace("⚡️")
+safeTrace = makeSafeTrace("⚡️")
 
 # early jank hook
 runtime_swap()
