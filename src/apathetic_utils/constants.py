@@ -3,8 +3,6 @@
 
 from __future__ import annotations
 
-from typing import ClassVar
-
 
 class ApatheticUtils_Internal_Constants:  # noqa: N801  # pyright: ignore[reportUnusedClass]
     """Constants for apathetic utils functionality.
