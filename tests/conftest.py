@@ -14,89 +14,50 @@ import os
 from collections.abc import Generator
 
 import pytest
-
-from tests.utils import makeSafeTrace, runtime_swap
-from tests.utils.log_fixtures import (
-    direct_logger,
-    module_logger,
+from apathetic_logging import (
+    Logger,
+    makeSafeTrace,
+    removeLogger,
 )
 
+from tests.utils import runtime_swap
 
-# These fixtures are intentionally re-exported so pytest can discover them.
-__all__ = [
-    "direct_logger",
-    "module_logger",
-]
 
 safeTrace = makeSafeTrace("⚡️")
 
 # early jank hook
 runtime_swap()
 
-# Import after runtime_swap to ensure we get the right module
-import apathetic_utils as mod_alogs  # noqa: E402
-import apathetic_utils.registry_data as mod_registry  # noqa: E402
-
 
 @pytest.fixture(autouse=True)
-def reset_logger_class_and_registry() -> Generator[None, None, None]:
-    """Reset logger class and registry state before and after each test.
+def reset_logger_class() -> Generator[None, None, None]:
+    """Reset logger class before and after each test for isolation.
 
-    This ensures that tests that set a custom logger class or modify registry
-    state don't affect subsequent tests. This is the lowest common denominator
-    needed by almost all tests.
+    This ensures that any logging state changes in tests don't affect
+    subsequent tests. Only needed if tests use logging functionality.
     """
     # Save original state
     original_logger_class = logging.getLoggerClass()
-    _registry = mod_registry.ApatheticLogging_Internal_RegistryData
-    original_name = _registry.registered_internal_logger_name
-    original_default = _registry.registered_internal_default_log_level
-    original_env_vars = _registry.registered_internal_log_level_env_vars
-    original_compatibility_mode = _registry.registered_internal_compatibility_mode
 
-    # Clear any existing loggers from the registry
-    _logging_utils = mod_alogs.apathetic_utils
+    # Clear any existing loggers
     logger_names = list(logging.Logger.manager.loggerDict.keys())
     for logger_name in logger_names:
-        _logging_utils.removeLogger(logger_name)
+        removeLogger(logger_name)
 
     # Reset to defaults before test
-    logging.setLoggerClass(mod_alogs.Logger)
-    mod_alogs.Logger.extendLoggingModule()
-    # Explicitly restore standard level names to ensure they're registered
-    # even if a previous test added conflicting custom level names
-    _constants = mod_alogs.apathetic_utils
-    mod_alogs.Logger.addLevelName(_constants.TEST_LEVEL, "TEST")
-    mod_alogs.Logger.addLevelName(_constants.TRACE_LEVEL, "TRACE")
-    mod_alogs.Logger.addLevelName(_constants.DETAIL_LEVEL, "DETAIL")
-    mod_alogs.Logger.addLevelName(_constants.MINIMAL_LEVEL, "MINIMAL")
-    mod_alogs.Logger.addLevelName(_constants.SILENT_LEVEL, "SILENT")
-    _registry.registered_internal_logger_name = None
-    _registry.registered_internal_default_log_level = None
-    _registry.registered_internal_log_level_env_vars = None
-    _registry.registered_internal_compatibility_mode = None
+    logging.setLoggerClass(Logger)
+    Logger.extendLoggingModule()
 
     yield
 
     # Clear loggers again after test
     logger_names = list(logging.Logger.manager.loggerDict.keys())
     for logger_name in logger_names:
-        _logging_utils.removeLogger(logger_name)
+        removeLogger(logger_name)
 
     # Restore original state after test
     logging.setLoggerClass(original_logger_class)
-    mod_alogs.Logger.extendLoggingModule()
-    # Explicitly restore standard level names to ensure they're registered
-    # even if the test added conflicting custom level names
-    mod_alogs.Logger.addLevelName(_constants.TEST_LEVEL, "TEST")
-    mod_alogs.Logger.addLevelName(_constants.TRACE_LEVEL, "TRACE")
-    mod_alogs.Logger.addLevelName(_constants.DETAIL_LEVEL, "DETAIL")
-    mod_alogs.Logger.addLevelName(_constants.MINIMAL_LEVEL, "MINIMAL")
-    mod_alogs.Logger.addLevelName(_constants.SILENT_LEVEL, "SILENT")
-    _registry.registered_internal_logger_name = original_name
-    _registry.registered_internal_default_log_level = original_default
-    _registry.registered_internal_log_level_env_vars = original_env_vars
-    _registry.registered_internal_compatibility_mode = original_compatibility_mode
+    Logger.extendLoggingModule()
 
 
 # ----------------------------------------------------------------------

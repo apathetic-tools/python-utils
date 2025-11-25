@@ -22,7 +22,7 @@
   "exclude": [
     "__pycache__/**",
     "*.pyc",
-    // "**/__init__.py",    // we want to expose our guts, not just the class, in this case
+    "**/__init__.py",    // Exclude __init__.py to avoid name collisions with module-level exports
     "**/__main__.py"     // Entry point, not stitched
   ],
 

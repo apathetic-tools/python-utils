@@ -3,12 +3,12 @@
 
 This test verifies that our unique runtime_mode swap functionality works
 correctly. Our conftest.py uses runtime_swap() to allow tests to run against
-either the installed package (src/serger) or the standalone single-file script
-(dist/serger.py) based on the RUNTIME_MODE environment variable.
+either the installed package (src/apathetic_utils) or the standalone single-file script
+(dist/apathetic_utils.py) based on the RUNTIME_MODE environment variable.
 
 Verifies:
-  - When RUNTIME_MODE=singlefile: All modules resolve to dist/serger.py
-  - When RUNTIME_MODE is unset (installed): All modules resolve to src/serger/
+  - When RUNTIME_MODE=singlefile: All modules resolve to dist/apathetic_utils.py
+  - When RUNTIME_MODE is unset (installed): All modules resolve to src/apathetic_utils/
   - Python's import cache (sys.modules) points to the correct sources
   - All submodules load from the expected location
 
@@ -23,11 +23,11 @@ import sys
 from pathlib import Path
 
 import pytest
-import serger as app_package
-import serger.meta as mod_meta
+from apathetic_logging import makeSafeTrace
 
+import apathetic_utils as app_package
 import apathetic_utils.system as amod_utils_system
-from tests.utils import PROJ_ROOT, makeSafeTrace
+from tests.utils import PROGRAM_PACKAGE, PROGRAM_SCRIPT, PROJ_ROOT
 
 
 # ---------------------------------------------------------------------------
@@ -96,15 +96,15 @@ def test_pytest_runtime_cache_integrity() -> None:
 
     Ensures that modules imported at the top of test files resolve to the
     correct source based on RUNTIME_MODE:
-    - singlefile mode: All modules must load from dist/serger.py
-    - installed mode: All modules must load from src/serger/
+    - singlefile mode: All modules must load from dist/apathetic_utils.py
+    - installed mode: All modules must load from src/apathetic_utils/
 
     Also verifies that Python's import cache (sys.modules) doesn't have stale
     references pointing to the wrong runtime.
     """
     # --- setup ---
     mode = os.getenv("RUNTIME_MODE", "unknown")
-    expected_script = DIST_ROOT / f"{mod_meta.PROGRAM_SCRIPT}.py"
+    expected_script = DIST_ROOT / f"{PROGRAM_SCRIPT}.py"
 
     # In singlefile mode, get the module from sys.modules to ensure we're using
     # the version from the standalone script (which was loaded by runtime_swap)
@@ -113,7 +113,8 @@ def test_pytest_runtime_cache_integrity() -> None:
     if mode == "singlefile" and "apathetic_utils.system" in sys.modules:
         # Use the module from sys.modules, which should be from the standalone script
         amod_utils_system_actual = sys.modules["apathetic_utils.system"]
-        # Check __file__ directly - for stitched modules, should point to dist/serger.py
+        # Check __file__ directly - for stitched modules, should point to
+        # dist/apathetic_utils.py
         utils_file_path = getattr(amod_utils_system_actual, "__file__", None)
         if utils_file_path:
             utils_file = str(utils_file_path)
@@ -126,7 +127,7 @@ def test_pytest_runtime_cache_integrity() -> None:
         utils_file = str(inspect.getsourcefile(amod_utils_system_actual))
     # --- execute ---
     safeTrace(f"RUNTIME_MODE={mode}")
-    safeTrace(f"{mod_meta.PROGRAM_PACKAGE}.utils.utils_system  → {utils_file}")
+    safeTrace(f"{PROGRAM_PACKAGE}.system  → {utils_file}")
 
     if os.getenv("TRACE"):
         dump_snapshot()
@@ -146,7 +147,7 @@ def test_pytest_runtime_cache_integrity() -> None:
 
         # path peeks - in singlefile mode, apathetic_utils modules might be
         # imported from the installed package, but they should still detect
-        # standalone mode correctly via sys.modules.get("serger")
+        # standalone mode correctly via sys.modules.get("apathetic_utils")
         # So we only check the path if the module is actually from dist/
         if utils_file.startswith(str(DIST_ROOT)):
             # Module is from standalone script, verify it's the right file
@@ -163,12 +164,11 @@ def test_pytest_runtime_cache_integrity() -> None:
 
         # troubleshooting info
         safeTrace(
-            f"sys.modules['{mod_meta.PROGRAM_PACKAGE}']"
-            f" = {sys.modules.get(mod_meta.PROGRAM_PACKAGE)}",
+            f"sys.modules['{PROGRAM_PACKAGE}'] = {sys.modules.get(PROGRAM_PACKAGE)}",
         )
         safeTrace(
-            f"sys.modules['{mod_meta.PROGRAM_PACKAGE}.utils.utils_system']"
-            f" = {sys.modules.get(f'{mod_meta.PROGRAM_PACKAGE}.utils.utils_system')}",
+            f"sys.modules['{PROGRAM_PACKAGE}.system']"
+            f" = {sys.modules.get(f'{PROGRAM_PACKAGE}.system')}",
         )
 
     else:
@@ -208,11 +208,9 @@ def test_debug_dump_all_module_origins() -> None:
     dump_snapshot(include_full=True)
 
     # show total module count for quick glance
-    count = sum(1 for name in sys.modules if name.startswith(mod_meta.PROGRAM_PACKAGE))
-    safeTrace(f"Loaded {count} {mod_meta.PROGRAM_PACKAGE} modules total")
+    count = sum(1 for name in sys.modules if name.startswith(PROGRAM_PACKAGE))
+    safeTrace(f"Loaded {count} {PROGRAM_PACKAGE} modules total")
 
     # force visible failure for debugging runs
-    xmsg = (
-        f"Intentional fail — {count} {mod_meta.PROGRAM_PACKAGE} modules listed above."
-    )
+    xmsg = f"Intentional fail — {count} {PROGRAM_PACKAGE} modules listed above."
     raise AssertionError(xmsg)

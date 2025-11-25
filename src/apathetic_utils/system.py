@@ -78,8 +78,8 @@ class ApatheticUtils_Internal_System:  # noqa: N801  # pyright: ignore[reportUnu
         if "__STANDALONE__" in globals():
             return "standalone"
         # 2. Check package module's globals (when loaded via importlib)
-        # The standalone script is loaded as the "serger" package
-        pkg_mod = sys.modules.get("serger")
+        # The standalone script is loaded as the "apathetic_utils" package
+        pkg_mod = sys.modules.get("apathetic_utils")
         if pkg_mod is not None and hasattr(pkg_mod, "__STANDALONE__"):
             return "standalone"
         # 3. Check __main__ module's globals (for script execution)

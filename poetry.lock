@@ -14,14 +14,14 @@ files = [
 
 [[package]]
 name = "apathetic-logging"
-version = "0.1.1"
+version = "0.2.2"
 description = "Because consistent logging shouldn't require large dependencies. "
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "apathetic_logging-0.1.1-py3-none-any.whl", hash = "sha256:8450dd32ba6b8a9ba64848e7e7261a3cf032d488569e8c81fc1ba9bc49c78d22"},
-    {file = "apathetic_logging-0.1.1.tar.gz", hash = "sha256:bf380827429ca0b0a99afc4d0a965be6432c0ee146f93705e5ab291d3743af3b"},
+    {file = "apathetic_logging-0.2.2-py3-none-any.whl", hash = "sha256:0fb72e68d8095127cda2e80faa922ae04a90e053b7604d66f2939dd242068304"},
+    {file = "apathetic_logging-0.2.2.tar.gz", hash = "sha256:3ae65aea03c9964847b7eab12fd3f75b974fec035e89bac785336c204708fe04"},
 ]
 
 [[package]]
@@ -1718,4 +1718,4 @@ dev = ["pytest", "setuptools"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10"
-content-hash = "010754876a33de024e9805e8227542a0c6cd23feddbcbe96abaf0de1d0d9484d"
+content-hash = "9c6ac5b4839a9af6095a0307a39257a24f7b57be69866e493f6c451f408e944f"

@@ -7,9 +7,9 @@ from types import ModuleType
 from typing import Any
 
 import pytest
+from apathetic_logging import safeTrace
 
 from .constants import PROGRAM_PACKAGE, PROGRAM_SCRIPT
-from .safeTrace import safeTrace
 from .strip_common_prefix import strip_common_prefix
 
 

@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+from apathetic_logging import makeSafeTrace
 
 from tests.utils.constants import (
     BUNDLER_SCRIPT,
@@ -28,7 +29,6 @@ from tests.utils.constants import (
 
 from .build_tools import find_shiv
 from .package_detection import find_all_packages_under_path
-from .safe_trace import makeSafeTrace
 
 
 if TYPE_CHECKING:

@@ -13,7 +13,7 @@ jobs:
     permissions:
       contents: write  # Required to create releases and tags
       id-token: write  # Required for PyPI publishing (if enabled)
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -48,13 +48,28 @@ jobs:
       - name: Build zipapp
         run: poetry run poe build:zipapp
 
-      - name: Semantic Release
+      - name: Semantic Release (Version & Tag)
+        id: release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          output=$(poetry run semantic-release version 2>&1) || true
+          echo "$output"
+          # Check if a new version was created (looks for version number pattern)
+          if echo "$output" | grep -qE "^[0-9]+\.[0-9]+\.[0-9]+|next version is"; then
+            echo "released=true" >> $GITHUB_OUTPUT
+          else
+            echo "released=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Semantic Release (Publish to GitHub)
+        if: steps.release.outputs.released == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: poetry run semantic-release publish
 
       - name: Upload custom release assets
-        if: success()
+        if: steps.release.outputs.released == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
