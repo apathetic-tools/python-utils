@@ -1,61 +1,71 @@
-# src/apathetic_utils/utils_text.py
+# src/apathetic_utils/text.py
+"""Text manipulation utilities."""
 
+from __future__ import annotations
 
 import re
 from pathlib import Path
 from typing import Any
 
 
-def plural(obj: Any) -> str:
-    """Return 's' if obj represents a plural count.
+class ApatheticUtils_Internal_Text:  # noqa: N801  # pyright: ignore[reportUnusedClass]
+    """Mixin class that provides text manipulation functionality.
 
-    Accepts ints, floats, and any object implementing __len__().
-    Returns '' for singular or zero.
+    This class contains utilities for text processing and formatting.
+    When mixed into apathetic_utils, it provides text manipulation methods.
     """
-    count: int | float
-    try:
-        count = len(obj)
-    except TypeError:
-        # fallback for numbers or uncountable types
-        count = obj if isinstance(obj, (int, float)) else 0
-    return "s" if count != 1 else ""
 
+    @staticmethod
+    def plural(obj: Any) -> str:
+        """Return 's' if obj represents a plural count.
 
-def remove_path_in_error_message(inner_msg: str, path: Path) -> str:
-    """Remove redundant file path mentions (and nearby filler)
-    from error messages.
+        Accepts ints, floats, and any object implementing __len__().
+        Returns '' for singular or zero.
+        """
+        count: int | float
+        try:
+            count = len(obj)
+        except TypeError:
+            # fallback for numbers or uncountable types
+            count = obj if isinstance(obj, (int, float)) else 0
+        return "s" if count != 1 else ""
 
-    Useful when wrapping a lower-level exception that already
-    embeds its own file reference, so the higher-level message
-    can use its own path without duplication.
+    @staticmethod
+    def remove_path_in_error_message(inner_msg: str, path: Path) -> str:
+        """Remove redundant file path mentions (and nearby filler)
+        from error messages.
 
-    Example:
-        "Invalid JSONC syntax in /abs/path/config.jsonc: Expecting value"
-        → "Invalid JSONC syntax: Expecting value"
+        Useful when wrapping a lower-level exception that already
+        embeds its own file reference, so the higher-level message
+        can use its own path without duplication.
 
-    """
-    # Normalize both path and name for flexible matching
-    full_path = str(path)
-    filename = path.name
+        Example:
+            "Invalid JSONC syntax in /abs/path/config.jsonc: Expecting value"
+            → "Invalid JSONC syntax: Expecting value"
 
-    # Common redundant phrases we might need to remove
-    candidates = [
-        f"in {full_path}",
-        f"in '{full_path}'",
-        f'in "{full_path}"',
-        f"in {filename}",
-        f"in '{filename}'",
-        f'in "{filename}"',
-        full_path,
-        filename,
-    ]
+        """
+        # Normalize both path and name for flexible matching
+        full_path = str(path)
+        filename = path.name
 
-    clean_msg = inner_msg
-    for pattern in candidates:
-        clean_msg = clean_msg.replace(pattern, "").strip(": ").strip()
+        # Common redundant phrases we might need to remove
+        candidates = [
+            f"in {full_path}",
+            f"in '{full_path}'",
+            f'in "{full_path}"',
+            f"in {filename}",
+            f"in '{filename}'",
+            f'in "{filename}"',
+            full_path,
+            filename,
+        ]
 
-    # Normalize leftover spaces and colons
-    clean_msg = re.sub(r"\s{2,}", " ", clean_msg)
-    clean_msg = re.sub(r"\s*:\s*", ": ", clean_msg)
+        clean_msg = inner_msg
+        for pattern in candidates:
+            clean_msg = clean_msg.replace(pattern, "").strip(": ").strip()
 
-    return clean_msg
+        # Normalize leftover spaces and colons
+        clean_msg = re.sub(r"\s{2,}", " ", clean_msg)
+        clean_msg = re.sub(r"\s*:\s*", ": ", clean_msg)
+
+        return clean_msg

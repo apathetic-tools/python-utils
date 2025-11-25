@@ -1,5 +1,7 @@
-# src/apathetic_utils/utils_paths.py
+# src/apathetic_utils/paths.py
+"""Path manipulation utilities."""
 
+from __future__ import annotations
 
 import re
 from pathlib import Path
@@ -7,62 +9,72 @@ from pathlib import Path
 from apathetic_logging import getLogger
 
 
-def normalize_path_string(raw: str) -> str:
-    r"""Normalize a user-supplied path string for cross-platform use.
+class ApatheticUtils_Internal_Paths:  # noqa: N801  # pyright: ignore[reportUnusedClass]
+    """Mixin class that provides path manipulation functionality.
 
-    Industry-standard (Git/Node/Python) rules:
-      - Treat both '/' and '\\' as valid separators and normalize all to '/'.
-      - Replace escaped spaces ('\\ ') with real spaces.
-      - Collapse redundant slashes (preserve protocol prefixes like 'file://').
-      - Never resolve '.' or '..' or touch the filesystem.
-      - Never raise for syntax; normalization is always possible.
-
-    This is the pragmatic cross-platform normalization strategy used by
-    Git, Node.js, and Python build tools.
-    This function is purely lexical — it normalizes syntax, not filesystem state.
+    This class contains utilities for path normalization and glob handling.
+    When mixed into apathetic_utils, it provides path manipulation methods.
     """
-    logger = getLogger()
-    if not raw:
-        return ""
 
-    path = raw.strip()
+    @staticmethod
+    def normalize_path_string(raw: str) -> str:
+        r"""Normalize a user-supplied path string for cross-platform use.
 
-    # Handle escaped spaces (common shell copy-paste)
-    if "\\ " in path:
-        fixed = path.replace("\\ ", " ")
-        logger.warning("Normalizing escaped spaces in path: %r → %s", path, fixed)
-        path = fixed
+        Industry-standard (Git/Node/Python) rules:
+          - Treat both '/' and '\\' as valid separators and normalize all to '/'.
+          - Replace escaped spaces ('\\ ') with real spaces.
+          - Collapse redundant slashes (preserve protocol prefixes like 'file://').
+          - Never resolve '.' or '..' or touch the filesystem.
+          - Never raise for syntax; normalization is always possible.
 
-    # Normalize all backslashes to forward slashes
-    path = path.replace("\\", "/")
+        This is the pragmatic cross-platform normalization strategy used by
+        Git, Node.js, and Python build tools.
+        This function is purely lexical — it normalizes syntax, not filesystem state.
+        """
+        logger = getLogger()
+        if not raw:
+            return ""
 
-    # Collapse redundant slashes (keep protocol //)
-    collapsed_slashes = re.sub(r"(?<!:)//+", "/", path)
-    if collapsed_slashes != path:
-        logger.trace("Collapsed redundant slashes: %r → %r", path, collapsed_slashes)
-        path = collapsed_slashes
+        path = raw.strip()
 
-    return path
+        # Handle escaped spaces (common shell copy-paste)
+        if "\\ " in path:
+            fixed = path.replace("\\ ", " ")
+            logger.warning("Normalizing escaped spaces in path: %r → %s", path, fixed)
+            path = fixed
 
+        # Normalize all backslashes to forward slashes
+        path = path.replace("\\", "/")
 
-def has_glob_chars(s: str) -> bool:
-    return any(c in s for c in "*?[]")
+        # Collapse redundant slashes (keep protocol //)
+        collapsed_slashes = re.sub(r"(?<!:)//+", "/", path)
+        if collapsed_slashes != path:
+            logger.trace(
+                "Collapsed redundant slashes: %r → %r", path, collapsed_slashes
+            )
+            path = collapsed_slashes
 
+        return path
 
-def get_glob_root(pattern: str) -> Path:
-    """Return the non-glob portion of a path like 'src/**/*.txt'.
+    @staticmethod
+    def has_glob_chars(s: str) -> bool:
+        return any(c in s for c in "*?[]")
 
-    Normalizes paths to cross-platform.
-    """
-    if not pattern:
-        return Path()
+    @staticmethod
+    def get_glob_root(pattern: str) -> Path:
+        """Return the non-glob portion of a path like 'src/**/*.txt'.
 
-    # Normalize backslashes to forward slashes
-    normalized = normalize_path_string(pattern)
+        Normalizes paths to cross-platform.
+        """
+        if not pattern:
+            return Path()
 
-    parts: list[str] = []
-    for part in Path(normalized).parts:
-        if re.search(r"[*?\[\]]", part):
-            break
-        parts.append(part)
-    return Path(*parts) if parts else Path()
+        # Normalize backslashes to forward slashes
+        normalized = ApatheticUtils_Internal_Paths.normalize_path_string(pattern)
+
+        parts: list[str] = []
+        for part in Path(normalized).parts:
+            if re.search(r"[*?\[\]]", part):
+                break
+            parts.append(part)
+        return Path(*parts) if parts else Path()
