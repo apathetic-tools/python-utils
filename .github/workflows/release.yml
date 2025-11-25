@@ -1,0 +1,66 @@
+# .github/workflows/release.yml
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required to create releases and tags
+      id-token: write  # Required for PyPI publishing (if enabled)
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+
+      - name: Install Poetry
+        uses: abatilo/actions-poetry@v4
+        with:
+          poetry-version: "latest"
+
+      - name: Install dependencies
+        run: poetry install --no-interaction --no-root
+
+      - name: Run checks
+        run: poetry run poe check
+
+      - name: Build single-file script
+        run: poetry run poe build:script
+
+      - name: Build zipapp
+        run: poetry run poe build:zipapp
+
+      - name: Semantic Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: poetry run semantic-release publish
+
+      - name: Upload custom release assets
+        if: success()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get the latest tag created by semantic-release
+          TAG=$(git describe --tags --abbrev=0)
+          if [ -n "$TAG" ] && [ -f dist/apathetic_utils.py ] && [ -f dist/apathetic_utils.pyz ]; then
+            gh release upload "$TAG" dist/apathetic_utils.py dist/apathetic_utils.pyz --clobber || true
+          fi
+
