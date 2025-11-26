@@ -4,10 +4,10 @@ title: Home
 permalink: /
 ---
 
-# Apathetic Python Utils
+# Apathetic Python Utils ⚙️
 
-**Minimal wrapper for the Python standard library logger.**  
-*Because consistent logging shouldn't require large dependencies.*
+**Grab bag of helpers for Apathetic projects.**  
+*When stdlib isn't enough.*
 
 *Apathetic Python Utils* provides a lightweight, dependency-free logging solution designed for CLI tools. It extends Python's standard library `logging` module with colorized output, dual-stream handling (stdout/stderr), extra logging levels, and seamless integration with Apathetic Tools projects.
 

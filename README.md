@@ -1,4 +1,4 @@
-# Apathetic Python Utils 📝
+# Apathetic Python Utils ⚙️
 
 [![CI](https://github.com/apathetic-tools/python-logs/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/goldilocks/python-logs/actions/workflows/ci.yml)
 [![License: MIT-a-NOAI](https://img.shields.io/badge/License-MIT--a--NOAI-blueviolet.svg)](LICENSE)
@@ -6,8 +6,8 @@
 
 📘 **[Roadmap](./ROADMAP.md)** · 📝 **[Release Notes](https://github.com/apathetic-tools/python-logs/releases)**
 
-**Collection of utility functions for Apathetic Tools projects**  
-*Slogan placeholder.*
+**Grab bag of helpers for Apathetic projects.**  
+*When stdlib isn't enough.*
 
 *Apathetic Python Utils*
 

@@ -3,7 +3,7 @@
 [project]
 name = "apathetic-utils"
 version = "0.1.0"
-description = "Collection of utility functions for Apathetic Tools projects"
+description = "When stdlib isn't enough."
 authors = [
     { name = "Apathetic Tools" }
 ]
@@ -13,17 +13,18 @@ requires-python = ">=3.10"
 dependencies = [
     "apathetic-logging>=0.2.2,<2.0.0"
 ]
-keywords = ["cli", "utility-library"]
+keywords = ["library", "utilities", "utils"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
-    "Topic :: Software Development :: Libraries :: Python Modules",
-    "Topic :: System :: Utilities",
-    "Topic :: Utilities",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Software Development :: Utilities",
 ]
 
 [project.urls]
