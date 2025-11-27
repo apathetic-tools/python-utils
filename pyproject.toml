@@ -334,8 +334,6 @@ skip-string-normalization = false
 # --- python-semantic-release: automated versioning and releases ---
 [tool.semantic_release]
 version_toml = ["pyproject.toml:project.version"]
-build_command = "poetry build"
-dist_path = "dist"
 version_variable = []
 changelog_file = "RELEASES.md"
 changelog_encoding = "utf-8"
@@ -349,6 +347,11 @@ remote = { name = "origin" }
 tag_commit = true
 prerelease_tag = "rc"
 build_commit_message = "chore: build release v{version} [skip ci]"
+build_command = false
+
+[tool.semantic_release.publish]
+dist_glob_patterns = []  # Empty list = don't look for any files to upload
+upload_to_vcs_release = false  # Disabled - workflow handles asset uploads manually to avoid 422 errors
 
 [tool.semantic_release.changelog]
 sections = [
