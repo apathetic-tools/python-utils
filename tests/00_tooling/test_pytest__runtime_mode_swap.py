@@ -25,10 +25,13 @@ from pathlib import Path
 import pytest
 from apathetic_logging import makeSafeTrace
 
-import apathetic_utils as app_package
 import apathetic_utils.system as amod_utils_system
 from tests.utils import PROGRAM_PACKAGE, PROGRAM_SCRIPT, PROJ_ROOT
 
+
+# --- convenience -----------------------------------------------------------
+
+_system = amod_utils_system.ApatheticUtils_Internal_System
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -43,13 +46,13 @@ DIST_ROOT = PROJ_ROOT / "dist"
 def list_important_modules() -> list[str]:
     """Return all importable submodules under the package, if available."""
     important: list[str] = []
-    if not hasattr(app_package, "__path__"):
+    if not hasattr(amod_utils_system, "__path__"):
         safeTrace("pkgutil.walk_packages skipped — standalone runtime (no __path__)")
-        important.append(app_package.__name__)
+        important.append(amod_utils_system.__name__)
     else:
         for _, name, _ in pkgutil.walk_packages(
-            app_package.__path__,
-            app_package.__name__ + ".",
+            amod_utils_system.__path__,
+            amod_utils_system.__name__ + ".",
         ):
             important.append(name)
 
@@ -112,7 +115,7 @@ def test_pytest_runtime_cache_integrity() -> None:
     # the installed package if it was imported before runtime_swap ran)
     if mode == "singlefile" and "apathetic_utils.system" in sys.modules:
         # Use the module from sys.modules, which should be from the standalone script
-        amod_utils_system_actual = sys.modules["apathetic_utils.system"]
+        amod_utils_system_actual = sys.modules[f"{PROGRAM_PACKAGE}.system"]
         # Check __file__ directly - for stitched modules, should point to
         # dist/apathetic_utils.py
         utils_file_path = getattr(amod_utils_system_actual, "__file__", None)
@@ -132,7 +135,7 @@ def test_pytest_runtime_cache_integrity() -> None:
     if os.getenv("TRACE"):
         dump_snapshot()
     # Access via main module to get the function from the namespace class
-    runtime_mode = app_package.detect_runtime_mode("apathetic_utils")
+    runtime_mode = _system.detect_runtime_mode(PROGRAM_PACKAGE)
 
     if mode == "singlefile":
         # --- verify singlefile ---
