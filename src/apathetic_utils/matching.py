@@ -142,6 +142,8 @@ class ApatheticUtils_Internal_Matching:  # noqa: N801  # pyright: ignore[reportU
             The function does not require `root` to exist; if it does not,
             a debug message is logged and matching is purely path-based.
         """
+        _matching = ApatheticUtils_Internal_Matching
+
         logger = getLogger()
         root = Path(root).resolve()
         path = Path(path)
@@ -195,20 +197,21 @@ class ApatheticUtils_Internal_Matching:  # noqa: N801  # pyright: ignore[reportU
 
                 # Remove **/ prefix and match against filename
                 pattern_suffix = pat[3:]  # Remove "**/" prefix
-                if ApatheticUtils_Internal_Matching.fnmatchcase_portable(
-                    file_name, pattern_suffix
-                ):
+                if _matching.fnmatchcase_portable(file_name, pattern_suffix):
                     logger.trace(
                         f"[is_excluded_raw] MATCHED **/ pattern {pattern!r} "
                         f"against filename {file_name}"
                     )
                     return True
 
-                # Also try matching against absolute path
+                # Also try matching against absolute path, but only if the pattern
+                # suffix contains directory separators
                 # (for patterns like **/subdir/file.py)
-                if ApatheticUtils_Internal_Matching.fnmatchcase_portable(
-                    abs_path_str, pat
-                ):
+                # If the suffix has no directory separators, we've already checked
+                # the filename above, so skip absolute path matching to avoid false
+                # positives (e.g., **/test_*.py shouldn't match paths containing "test")
+                has_dir_sep = "/" in pattern_suffix or "\\" in pattern_suffix
+                if has_dir_sep and _matching.fnmatchcase_portable(abs_path_str, pat):
                     logger.trace(
                         f"[is_excluded_raw] MATCHED **/ pattern {pattern!r} "
                         f"against absolute path"
@@ -260,7 +263,7 @@ class ApatheticUtils_Internal_Matching:  # noqa: N801  # pyright: ignore[reportU
                         resolved_pattern_str = str(resolved_pattern).replace("\\", "/")
 
                     # Match the resolved pattern against the absolute file path
-                    if ApatheticUtils_Internal_Matching.fnmatchcase_portable(
+                    if _matching.fnmatchcase_portable(
                         abs_path_str, resolved_pattern_str
                     ):
                         logger.trace(
@@ -287,12 +290,12 @@ class ApatheticUtils_Internal_Matching:  # noqa: N801  # pyright: ignore[reportU
                     pat_rel = str(Path(pat).relative_to(root)).replace("\\", "/")
                 except ValueError:
                     pat_rel = pat  # not under root; treat as-is
-                if ApatheticUtils_Internal_Matching.fnmatchcase_portable(rel, pat_rel):
+                if _matching.fnmatchcase_portable(rel, pat_rel):
                     logger.trace(f"[is_excluded_raw] MATCHED pattern {pattern!r}")
                     return True
 
             # Otherwise treat pattern as relative glob
-            if ApatheticUtils_Internal_Matching.fnmatchcase_portable(rel, pat):
+            if _matching.fnmatchcase_portable(rel, pat):
                 logger.trace(f"[is_excluded_raw] MATCHED pattern {pattern!r}")
                 return True
 

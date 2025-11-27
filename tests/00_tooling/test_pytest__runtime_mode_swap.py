@@ -132,7 +132,7 @@ def test_pytest_runtime_cache_integrity() -> None:
     if os.getenv("TRACE"):
         dump_snapshot()
     # Access via main module to get the function from the namespace class
-    runtime_mode = app_package.detect_runtime_mode()
+    runtime_mode = app_package.detect_runtime_mode("apathetic_utils")
 
     if mode == "singlefile":
         # --- verify singlefile ---

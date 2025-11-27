@@ -16,9 +16,13 @@ ends with ".pyz". This is unusual but functional.
 import sys
 from unittest.mock import MagicMock, patch
 
-import apathetic_utils as mod_autils
-import apathetic_utils.system as amod_utils_system  # needed for __file__ access
+import apathetic_utils.system as amod_utils_system
+from tests.utils import PROGRAM_PACKAGE
 
+
+# --- convenience -----------------------------------------------------------
+
+_system = amod_utils_system.ApatheticUtils_Internal_System
 
 # ---------------------------------------------------------------------------
 # Tests
@@ -33,7 +37,7 @@ def test_detect_runtime_mode_frozen() -> None:
     # --- setup ---
     with patch.object(sys, "frozen", True, create=True):
         # --- execute ---
-        result = mod_autils.detect_runtime_mode()
+        result = _system.detect_runtime_mode(PROGRAM_PACKAGE)
 
     # --- verify ---
     assert result == "frozen"
@@ -67,7 +71,7 @@ def test_detect_runtime_mode_zipapp() -> None:
         patch.dict(sys.modules, {"__main__": mock_main}),
     ):
         # --- execute ---
-        result = mod_autils.detect_runtime_mode()
+        result = _system.detect_runtime_mode(PROGRAM_PACKAGE)
 
     # --- verify ---
     assert result == "zipapp"
@@ -87,7 +91,7 @@ def test_detect_runtime_mode_zipapp_complex_path() -> None:
         patch.dict(sys.modules, {"__main__": mock_main}),
     ):
         # --- execute ---
-        result = mod_autils.detect_runtime_mode()
+        result = _system.detect_runtime_mode(PROGRAM_PACKAGE)
 
     # --- verify ---
     assert result == "zipapp"
@@ -107,7 +111,7 @@ def test_detect_runtime_mode_zipapp_missing_file_attribute() -> None:
             patch.object(sys, "frozen", False, create=True),
             patch.dict(sys.modules, {"__main__": mock_main}),
             patch.dict(
-                mod_autils.detect_runtime_mode.__globals__,
+                _system.detect_runtime_mode.__globals__,
                 clear=False,
             ) as patched_globals,
         ):
@@ -117,7 +121,7 @@ def test_detect_runtime_mode_zipapp_missing_file_attribute() -> None:
                 delattr(mock_main, "__STANDALONE__")
 
             # --- execute ---
-            result = mod_autils.detect_runtime_mode()
+            result = _system.detect_runtime_mode(PROGRAM_PACKAGE)
 
         # --- verify ---
         # Should fall through to installed since no indicators match
@@ -144,13 +148,13 @@ def test_detect_runtime_mode_standalone() -> None:
         patch.object(sys, "frozen", False, create=True),
         patch.dict(sys.modules, {"__main__": mock_main}),
         patch.dict(
-            mod_autils.detect_runtime_mode.__globals__,
+            _system.detect_runtime_mode.__globals__,
             {"__STANDALONE__": True},
             clear=False,
         ),
     ):
         # --- execute ---
-        result = mod_autils.detect_runtime_mode()
+        result = _system.detect_runtime_mode(PROGRAM_PACKAGE)
 
     # --- verify ---
     assert result == "standalone"
@@ -173,7 +177,7 @@ def test_detect_runtime_mode_installed() -> None:
             patch.object(sys, "frozen", False, create=True),
             patch.dict(sys.modules, {"__main__": mock_main}),
             patch.dict(
-                mod_autils.detect_runtime_mode.__globals__,
+                _system.detect_runtime_mode.__globals__,
                 clear=False,
             ) as patched_globals,
         ):
@@ -184,7 +188,7 @@ def test_detect_runtime_mode_installed() -> None:
                 delattr(mock_main, "__STANDALONE__")
 
             # --- execute ---
-            result = mod_autils.detect_runtime_mode()
+            result = _system.detect_runtime_mode(PROGRAM_PACKAGE)
 
         # --- verify ---
         assert result == "installed"
@@ -213,13 +217,13 @@ def test_detect_runtime_mode_installed_missing_main() -> None:
             try:
                 # Ensure __STANDALONE__ is not in globals
                 with patch.dict(
-                    mod_autils.detect_runtime_mode.__globals__,
+                    _system.detect_runtime_mode.__globals__,
                     clear=False,
                 ) as patched_globals:
                     patched_globals.pop("__STANDALONE__", None)
 
                     # --- execute ---
-                    result = mod_autils.detect_runtime_mode()
+                    result = _system.detect_runtime_mode(PROGRAM_PACKAGE)
             finally:
                 # Restore __main__ if it was there
                 if saved_main is not None:
@@ -250,13 +254,13 @@ def test_detect_runtime_mode_frozen_takes_precedence() -> None:
         patch.object(sys, "frozen", True, create=True),
         patch.dict(sys.modules, {"__main__": mock_main}),
         patch.dict(
-            mod_autils.detect_runtime_mode.__globals__,
+            _system.detect_runtime_mode.__globals__,
             {"__STANDALONE__": True},
             clear=False,
         ),
     ):
         # --- execute ---
-        result = mod_autils.detect_runtime_mode()
+        result = _system.detect_runtime_mode(PROGRAM_PACKAGE)
 
     # --- verify ---
     assert result == "frozen"
@@ -279,13 +283,13 @@ def test_detect_runtime_mode_zipapp_takes_precedence_over_standalone() -> None:
         patch.object(sys, "frozen", False, create=True),
         patch.dict(sys.modules, {"__main__": mock_main}),
         patch.dict(
-            mod_autils.detect_runtime_mode.__globals__,
+            _system.detect_runtime_mode.__globals__,
             {"__STANDALONE__": True},
             clear=False,
         ),
     ):
         # --- execute ---
-        result = mod_autils.detect_runtime_mode()
+        result = _system.detect_runtime_mode(PROGRAM_PACKAGE)
 
     # --- verify ---
     assert result == "zipapp"

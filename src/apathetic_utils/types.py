@@ -18,7 +18,7 @@ from typing import (
 from typing_extensions import NotRequired
 
 
-T = TypeVar("T")
+ApatheticUtils_T = TypeVar("ApatheticUtils_T")
 
 
 class ApatheticUtils_Internal_Types:  # noqa: N801  # pyright: ignore[reportUnusedClass]
@@ -29,7 +29,10 @@ class ApatheticUtils_Internal_Types:  # noqa: N801  # pyright: ignore[reportUnus
     """
 
     @staticmethod
-    def cast_hint(typ: type[T], value: Any) -> T:  # noqa: ARG004
+    def cast_hint(
+        typ: type[ApatheticUtils_T],  # noqa: ARG004
+        value: Any,
+    ) -> ApatheticUtils_T:
         """Explicit cast that documents intent but is purely for type hinting.
 
         A drop-in replacement for `typing.cast`, meant for places where:
@@ -42,7 +45,7 @@ class ApatheticUtils_Internal_Types:  # noqa: N801  # pyright: ignore[reportUnus
 
         This function performs *no runtime checks*.
         """
-        return cast("T", value)
+        return cast("ApatheticUtils_T", value)
 
     @staticmethod
     def schema_from_typeddict(td: type[Any]) -> dict[str, Any]:

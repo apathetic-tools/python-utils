@@ -64,7 +64,7 @@ class ApatheticUtils_Internal_System:  # noqa: N801  # pyright: ignore[reportUnu
         )
 
     @staticmethod
-    def detect_runtime_mode() -> str:  # noqa: PLR0911
+    def detect_runtime_mode(package_name: str) -> str:  # noqa: PLR0911
         if getattr(sys, "frozen", False):
             return "frozen"
         if "__main__" in sys.modules and getattr(
@@ -79,7 +79,7 @@ class ApatheticUtils_Internal_System:  # noqa: N801  # pyright: ignore[reportUnu
             return "standalone"
         # 2. Check package module's globals (when loaded via importlib)
         # The standalone script is loaded as the "apathetic_utils" package
-        pkg_mod = sys.modules.get("apathetic_utils")
+        pkg_mod = sys.modules.get(package_name)
         if pkg_mod is not None and hasattr(pkg_mod, "__STANDALONE__"):
             return "standalone"
         # 3. Check __main__ module's globals (for script execution)
