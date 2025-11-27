@@ -17,4 +17,4 @@ PROGRAM_SCRIPT = "apathetic_utils"
 PROGRAM_CONFIG = "apathetic_utils"
 
 # Path to the bundler script (relative to project root)
-BUNDLER_SCRIPT = "dev/serger.py"
+BUNDLER_SCRIPT = "bin/serger.py"
