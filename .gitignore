@@ -33,7 +33,6 @@ share/python-wheels/
 *.egg
 MANIFEST
 *.tmp
-bin/
 
 # Prevent recursive test discovery inside build outputs
 !tests/              

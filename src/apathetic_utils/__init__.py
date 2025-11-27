@@ -11,9 +11,9 @@ if TYPE_CHECKING:
 # Get reference to the namespace class
 # In stitched mode: class is already defined in namespace.py (executed before this)
 # In installed mode: import from namespace module
-_is_standalone = globals().get("__STANDALONE__", False)
+_apathetic_utils_is_standalone = globals().get("__STANDALONE__", False)
 
-if _is_standalone:
+if _apathetic_utils_is_standalone:
     # Stitched mode: class already defined in namespace.py
     # Get reference to the class (it's already in globals from namespace.py)
     _apathetic_utils_raw = globals().get("apathetic_utils")

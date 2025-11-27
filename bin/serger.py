@@ -4,7 +4,7 @@ Serger — Stitch your module into a single file.
 This single-file version is auto-generated from modular sources.
 Version: 0.1.0
 Commit: unknown (local build)
-Built: 2025-11-19 01:34:02 UTC
+Built: 2025-11-27 01:44:17 UTC
 """
 # Serger — Stitch your module into a single file.
 # ============LICENSE============
@@ -13,45 +13,42 @@ Built: 2025-11-19 01:34:02 UTC
 # ================================
 # Version: 0.1.0
 # Commit: unknown (local build)
-# Build Date: 2025-11-19 01:34:02 UTC
+# Build Date: 2025-11-27 01:44:17 UTC
 # Repo: https://github.com/apathetic-tools/serger
 
 from __future__ import annotations
 
 import argparse
-import ast
 import builtins
-import graphlib
+import contextlib
 import importlib
 import inspect
 import json
 import logging
 import os
-import platform
-import py_compile
 import re
 import shutil
+import site
 import subprocess
 import sys
-import tempfile
-import time
 import traceback
 import types
-from collections import OrderedDict
 from collections.abc import Callable, Generator, Iterator
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from difflib import get_close_matches
 from fnmatch import fnmatchcase
 from functools import lru_cache
 from io import StringIO
 from pathlib import Path
-from types import UnionType
+from types import FrameType, UnionType
 from typing import (
+    TYPE_CHECKING,
     Any,
+    ClassVar,
     Literal,
     TextIO,
+    TypeAlias,
     TypedDict,
     TypeVar,
     Union,
@@ -64,140 +61,1429 @@ from typing import (
 from typing_extensions import NotRequired
 
 
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+import ast
+import platform
+import py_compile
+import tempfile
+import time
+from collections import OrderedDict
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING
+
+
 __version__ = "0.1.0"
 __commit__ = "unknown (local build)"
-__build_date__ = "2025-11-19 01:34:02 UTC"
+__build_date__ = "2025-11-27 01:44:17 UTC"
 __STANDALONE__ = True
 __STITCH_SOURCE__ = "serger"
 __package__ = "serger"
 
 
-# === serger.apathetic_logs.logs ===
-# src/serger/utils/utils_logs.py
-"""Shared Apathetic CLI logger implementation."""
+# === apathetic_logging.constants ===
+# src/apathetic_logging/constants.py
+"""Constants for Apathetic Logging."""
 
 
-# --- Constants ---------------------------------------------------------------
+class ApatheticLogging_Internal_Constants:  # noqa: N801  # pyright: ignore[reportUnusedClass]
+    """Constants for apathetic logging functionality.
 
-DEFAULT_APATHETIC_LOG_LEVEL: str = "info"
-DEFAULT_APATHETIC_LOG_LEVEL_ENV_VARS: list[str] = ["LOG_LEVEL"]
+    This class contains all constant values used by apathetic_logging.
+    It's kept separate for organizational purposes.
+    """
 
-# Flag for quick runtime enable/disable
-TEST_TRACE_ENABLED = os.getenv("TEST_TRACE", "").lower() in {"1", "true", "yes"}
+    DEFAULT_APATHETIC_LOG_LEVEL: str = "detail"
+    """Default log level when no other source is found."""
+
+    DEFAULT_APATHETIC_LOG_LEVEL_ENV_VARS: ClassVar[list[str]] = ["LOG_LEVEL"]
+    """Default environment variable names to check for log level."""
+
+    SAFE_TRACE_ENABLED: bool = os.getenv("SAFE_TRACE", "").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    """Enable safe trace diagnostics (controlled by SAFE_TRACE env var)."""
+
+    NOTSET_LEVEL: int = logging.NOTSET
+    """NOTSET level (0) - logger inherits level from parent."""
+
+    # levels must be careful not to equal 0 to avoid NOTSET
+    TEST_LEVEL: int = logging.DEBUG - 8
+    """Most verbose level, bypasses capture."""
+
+    TRACE_LEVEL: int = logging.DEBUG - 5
+    """More verbose than DEBUG."""
+
+    DETAIL_LEVEL: int = logging.INFO - 5
+    """More detailed than INFO."""
+
+    MINIMAL_LEVEL: int = logging.INFO + 5
+    """Less detailed than INFO."""
+
+    SILENT_LEVEL: int = logging.CRITICAL + 1
+    """Disables all logging (one above the highest builtin level)."""
+
+    LEVEL_ORDER: ClassVar[list[str]] = [
+        "test",  # most verbose, bypasses capture for debugging tests
+        "trace",
+        "debug",
+        "detail",
+        "info",
+        "minimal",
+        "warning",
+        "error",
+        "critical",
+        "silent",  # disables all logging
+    ]
+    """Ordered list of log level names from most to least verbose."""
+
+    class ANSIColors:
+        """A selection of ANSI color code constants.
+
+        For a comprehensive reference on ANSI escape codes and color support,
+        see: https://en.wikipedia.org/wiki/ANSI_escape_code#Colors
+        """
+
+        RESET: str = "\033[0m"
+        """Reset ANSI color codes."""
+
+        CYAN: str = "\033[36m"
+        """Cyan ANSI color code."""
+
+        YELLOW: str = "\033[93m"  # or \033[33m
+        """Yellow ANSI color code."""
+
+        RED: str = "\033[91m"  # or \033[31m # or background \033[41m
+        """Red ANSI color code."""
+
+        GREEN: str = "\033[92m"  # or \033[32m
+        """Green ANSI color code."""
+
+        GRAY: str = "\033[90m"
+        """Gray ANSI color code."""
+
+    TAG_STYLES: ClassVar[dict[str, tuple[str, str]]] = {
+        "TEST": (ANSIColors.GRAY, "[TEST]"),
+        "TRACE": (ANSIColors.GRAY, "[TRACE]"),
+        "DEBUG": (ANSIColors.CYAN, "[DEBUG]"),
+        "WARNING": ("", "⚠️ "),
+        "ERROR": ("", "❌ "),
+        "CRITICAL": ("", "💥 "),
+    }
+    """Mapping of level names to (color_code, tag_text) tuples."""
+
+    TARGET_PYTHON_VERSION: tuple[int, int] | None = None
+    """Target Python version (major, minor).
+
+    If None, target version checks are disabled by default.
+    """
+
+    DEFAULT_PROPAGATE: bool = False
+    """Default propagate setting for loggers.
+
+    When False, loggers do not propagate messages to parent loggers,
+    avoiding duplicate root logs.
+    """
+
+
+# === apathetic_logging.dual_stream_handler ===
+# src/apathetic_logging/dual_stream_handler.py
+"""DualStreamHandler class for Apathetic Logging.
+
+Docstrings are adapted from the standard library logging.Handler documentation
+licensed under the Python Software Foundation License Version 2.
+"""
+
+
+class ApatheticLogging_Internal_DualStreamHandler:  # noqa: N801  # pyright: ignore[reportUnusedClass]
+    """Mixin class that provides the DualStreamHandler nested class.
+
+    This class contains the DualStreamHandler implementation as a nested class.
+    When mixed into apathetic_logging, it provides apathetic_logging.DualStreamHandler.
+    """
+
+    class DualStreamHandler(logging.StreamHandler):  # type: ignore[type-arg]
+        """Send info to stdout, everything else to stderr.
+
+        INFO, MINIMAL, and DETAIL go to stdout (normal program output).
+        TRACE, DEBUG, WARNING, ERROR, and CRITICAL go to stderr
+        (diagnostic/error output).
+        When logger level is TEST, TEST/TRACE/DEBUG messages bypass capture
+        by writing to sys.__stderr__ instead of sys.stderr. This allows
+        debugging tests without breaking output assertions while still being
+        capturable by subprocess.run(capture_output=True).
+        WARNING, ERROR, and CRITICAL always use normal stderr, even in TEST mode.
+        """
+
+        enable_color: bool = False
+        """Enable ANSI color output for log messages."""
+
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            """Initialize the dual stream handler. super().__init__() to StreamHandler.
+
+            Args:
+                *args: Additional positional arguments (for future-proofing)
+                **kwargs: Additional keyword arguments (for future-proofing)
+            """
+            # default to stdout, overridden per record in emit()
+            super().__init__(*args, **kwargs)  # pyright: ignore[reportUnknownMemberType]
+
+        def emit(self, record: logging.LogRecord, *args: Any, **kwargs: Any) -> None:
+            """Routes based on log level and handles colorization.
+
+            Features:
+            - Routes messages to stdout or stderr based on log level:
+              - DETAIL, INFO, and MINIMAL → stdout (normal program output)
+              - TRACE, DEBUG, WARNING, ERROR, and CRITICAL → stderr
+                (diagnostic/error output)
+            - In TEST mode, TEST/TRACE/DEBUG messages bypass pytest capture
+              by writing to sys.__stderr__ instead of sys.stderr
+            - Sets enable_color attribute on record for TagFormatter integration
+
+            Args:
+                record: The LogRecord to emit
+                *args: Additional positional arguments (for future-proofing)
+                **kwargs: Additional keyword arguments (for future-proofing)
+
+            logging.Handler.emit() implementation:
+            https://docs.python.org/3.10/library/logging.html#logging.Handler.emit
+            """
+            # Import here to avoid circular dependency
+
+            _constants = ApatheticLogging_Internal_Constants
+            level = record.levelno
+
+            # Check if logger is in TEST mode (bypass capture for verbose levels)
+            logger_name = record.name
+            # from .get_logger import (
+            #     ApatheticLogging_Internal_GetLogger,
+            # )
+
+            # logger_instance = ApatheticLogging_Internal_GetLogger.getLogger(
+            #     logger_name, extend=False
+            # )
+            # can't use internal getLogger() here
+            #   because then it will call extendLoggingModule again
+            logger_instance = logging.getLogger(logger_name)
+
+            # Use duck typing to check if this is our Logger class
+            # (has test() method) to avoid circular dependency
+            has_test_method = hasattr(logger_instance, "test") and callable(
+                getattr(logger_instance, "test", None)
+            )
+            # Use effective level (not explicit level) to detect TEST mode,
+            # so child loggers that inherit TEST level from parent are correctly
+            # detected
+            is_test_mode = has_test_method and logger_instance.getEffectiveLevel() == (
+                _constants.TEST_LEVEL
+            )
+
+            # Determine target stream
+            if level >= logging.WARNING:
+                # WARNING, ERROR, CRITICAL → stderr (always, even in TEST mode)
+                # This ensures they still break tests as expected
+                self.stream = sys.stderr
+            elif level <= logging.DEBUG:
+                # TEST, TRACE, DEBUG → stderr (normal) or __stderr__ (TEST mode bypass)
+                # Use __stderr__ so they bypass pytest capsys but are still
+                # capturable by subprocess.run(capture_output=True)
+                if is_test_mode:
+                    self.stream = sys.__stderr__
+                else:
+                    self.stream = sys.stderr
+            else:
+                # DETAIL, INFO, MINIMAL → stdout (normal program output)
+                self.stream = sys.stdout
+
+            # used by TagFormatter
+            record.enable_color = getattr(self, "enable_color", False)
+
+            super().emit(record, *args, **kwargs)
+
+
+# === apathetic_logging.registry_data ===
+# src/apathetic_logging/registry_data.py
+"""Registry for configurable log level settings."""
+
+
+class ApatheticLogging_Internal_RegistryData:  # noqa: N801  # pyright: ignore[reportUnusedClass]
+    """Mixin class that provides registry storage for configurable settings.
+
+    This class contains class-level attributes for storing registered configuration
+    values. When mixed into apathetic_logging, it provides centralized storage for
+    log level environment variables, default log level, logger name, target
+    Python version, and propagate setting.
+
+    Other mixins access these registries via direct class reference:
+    ``ApatheticLogging_Internal_RegistryData.registered_internal_*``
+    """
+
+    # Registry for configurable log level settings
+    # These are class-level attributes to avoid module-level namespace pollution
+    # Public but marked with _internal_ to indicate internal use by other mixins
+    registered_internal_log_level_env_vars: list[str] | None = None
+    """Environment variable names to check for log level configuration.
+
+    If None, falls back to DEFAULT_APATHETIC_LOG_LEVEL_ENV_VARS from constants.py.
+    The environment variables are checked in order, and the first non-empty value
+    found is used. Set via registerLogLevelEnvVars() or register_log_level_env_vars().
+    """
+    registered_internal_default_log_level: str | None = None
+    """Default log level to use when no other source is found.
+
+    If None, falls back to DEFAULT_APATHETIC_LOG_LEVEL from constants.py.
+    Used when no environment variable is set and no root log level is provided.
+    Set via registerDefaultLogLevel() or register_default_log_level().
+    """
+    registered_internal_logger_name: str | None = None
+    """Registered logger name to use for logger name inference.
+
+    If None, logger names are inferred from the calling module's __package__
+    attribute. When set, this value is returned by getDefaultLoggerName() instead
+    of inferring from the call stack. Set via registerLogger() or register_logger().
+    """
+    registered_internal_target_python_version: tuple[int, int] | None = None
+    """Target Python version (major, minor) for compatibility checking.
+
+    If None, falls back to TARGET_PYTHON_VERSION from constants.py.
+    Used to validate function calls against target version, not just runtime version.
+    """
+    registered_internal_propagate: bool | None = None
+    """Propagate setting for loggers.
+
+    If None, falls back to DEFAULT_PROPAGATE from constants.py.
+    When False, loggers do not propagate messages to parent loggers.
+    """
+    registered_internal_compatibility_mode: bool | None = None
+    """Compatibility mode setting for stdlib drop-in replacement.
+
+    If None, defaults to False (current improved behavior).
+    When True, restores stdlib-compatible behavior where possible
+    (e.g., getLogger(None) returns root logger).
+    Set via registerCompatibilityMode() or register_compatibility_mode().
+    """
+
+
+# === apathetic_logging.logging_utils ===
+# src/apathetic_logging/logging_utils.py
+"""Logging utilities for Apathetic Logging.
+
+Docstrings are adapted from the standard library logging module documentation
+licensed under the Python Software Foundation License Version 2.
+"""
+
+
+class ApatheticLogging_Internal_LoggingUtils:  # noqa: N801  # pyright: ignore[reportUnusedClass]
+    """Mixin class that provides helper functions for the standard logging module.
+
+    This class contains utility functions that operate directly on or replace
+    standard library `logging.*` utilities and functions. These helpers extend
+    or wrap the built-in logging module functionality to provide enhanced
+    capabilities or safer alternatives.
+
+    When mixed into apathetic_logging, it provides utility functions that
+    interact with Python's standard logging module.
+    """
+
+    _LoggerType = TypeVar("_LoggerType", bound=logging.Logger)
+
+    @staticmethod
+    def _getCompatibilityMode() -> bool:
+        """Get the compatibility mode setting from registry.
+
+        Returns the registered compatibility mode setting, or False (improved
+        behavior) if not registered. This is an internal helper to avoid
+        circular imports (registry.py imports from logging_utils.py).
+
+        Returns:
+            Compatibility mode setting (True or False).
+            Defaults to False if not registered.
+        """
+        _registry_data = ApatheticLogging_Internal_RegistryData
+        return (
+            _registry_data.registered_internal_compatibility_mode
+            if _registry_data.registered_internal_compatibility_mode is not None
+            else False
+        )
+
+    @staticmethod
+    def getLevelName(
+        level: int | str, *args: Any, strict: bool = False, **kwargs: Any
+    ) -> str | int:
+        """Return the textual or numeric representation of a logging level.
+
+        Behavior depends on compatibility mode (set via `registerCompatibilityMode()`):
+
+        - Value-add: Uppercases string inputs before processing
+
+        **Compatibility mode disabled (`compat_mode=False`, default):**
+        - Accepts both integer and string input
+        - For string input: validates level exists and returns canonical
+          level name string
+        - For integer input: returns level name as string (never returns `int`)
+        - Optional strict mode to raise `ValueError` for unknown integer levels
+
+        For string→int conversion, use `getLevelNumber()` instead.
+
+        **Compatibility mode enabled (`compat_mode=True`):**
+        - Behaves like stdlib `logging.getLevelName()` (bidirectional)
+        - Returns `str` for integer input, `int` for string input (known levels)
+        - Returns `"Level {level}"` string for unknown levels
+
+        Args:
+            level: Log level as integer or string name
+            *args: Additional positional arguments (for future-proofing)
+            strict: If True, raise ValueError for unknown levels. If False (default),
+                returns "Level {level}" format for unknown integer levels (matching
+                stdlib behavior). Only used when compatibility mode is disabled and
+                level is an integer.
+            **kwargs: Additional keyword arguments (for future-proofing)
+
+        Returns:
+            - Compatibility mode enabled: `str | int` (bidirectional like stdlib)
+            - Compatibility mode disabled: `str` (always string; string input
+              is validated and returns canonical name, int input is converted
+              to name)
+
+        Raises:
+            ValueError: If string level cannot be resolved to a known level
+                (non-compat mode), or if strict=True and level is an integer
+                that cannot be resolved to a known level name
+
+        Example:
+            >>> # Compatibility mode enabled (stdlib-like behavior):
+            >>> from apathetic_logging import registerCompatibilityMode
+            >>> registerCompatibilityMode(compat_mode=True)
+            >>> getLevelName(10)  # int input
+            "DEBUG"
+            >>> getLevelName("DEBUG")  # string input
+            10
+            >>> getLevelName("debug")  # case-insensitive, uppercased
+            10
+
+            >>> # Compatibility mode disabled (improved behavior):
+            >>> registerCompatibilityMode(compat_mode=False)
+            >>> getLevelName(10)
+            "DEBUG"
+            >>> getLevelName("DEBUG")  # Validates and returns canonical name
+            "DEBUG"
+            >>> getLevelName("debug")  # Validates and returns canonical name
+            "DEBUG"
+            >>> getLevelName("UNKNOWN")  # Unknown string raises ValueError
+            ValueError: Unknown log level: 'UNKNOWN'
+
+        See Also:
+            getLevelNumber() - Convert string to int (when compat mode disabled)
+            registerCompatibilityMode() - Enable/disable compatibility mode
+
+        https://docs.python.org/3.10/library/logging.html#logging.getLevelName
+        """
+        # Check compatibility mode from registry
+        compat_mode = ApatheticLogging_Internal_LoggingUtils._getCompatibilityMode()
+
+        # Use unidirectional functions to avoid duplication
+        if compat_mode and isinstance(level, str):
+            # Compatibility mode with string input → return int (like stdlib)
+            return ApatheticLogging_Internal_LoggingUtils.getLevelNumber(level)
+
+        # All other cases: return string (compat mode with int, or non-compat mode)
+        return ApatheticLogging_Internal_LoggingUtils.getLevelNameStr(
+            level, *args, strict=strict, **kwargs
+        )
+
+    @staticmethod
+    def getLevelNumber(level: str | int) -> int:
+        """Convert a log level name to its numeric value.
+
+        Recommended way to convert string level names to integers. This function
+        explicitly performs string->int conversion, unlike `getLevelName()` which
+        has bidirectional behavior for backward compatibility.
+
+        Handles all levels registered via logging.addLevelName() (including
+        standard library levels, custom apathetic levels, and user-registered levels).
+
+        Args:
+            level: Log level as string name (case-insensitive) or integer
+
+        Returns:
+            Integer level value
+
+        Raises:
+            ValueError: If level cannot be resolved to a known level
+
+        Example:
+            >>> getLevelNumber("DEBUG")
+            10
+            >>> getLevelNumber("TRACE")
+            5
+            >>> getLevelNumber(20)
+            20
+            >>> getLevelNumber("UNKNOWN")
+            ValueError: Unknown log level: 'UNKNOWN'
+
+        See Also:
+            getLevelName() - Convert int to string (intended use)
+        """
+        if isinstance(level, int):
+            return level
+
+        level_str = level.upper()
+
+        # Use getattr() to find level constants registered via logging.addLevelName():
+        # - Standard library levels (DEBUG, INFO, etc.) - registered by default
+        # - Custom apathetic levels (TEST, TRACE, etc.)
+        #   registered via extendLoggingModule()
+        # - User-registered levels via our addLevelName() method
+        #   (but not stdlib's logging.addLevelName() which doesn't set attribute)
+        # - User-registered levels via setattr(logging, level_str, value)
+        resolved = getattr(logging, level_str, None)
+        if isinstance(resolved, int):
+            return resolved
+
+        # Unknown level: always raise
+        msg = f"Unknown log level: {level_str!r}"
+        raise ValueError(msg)
+
+    @staticmethod
+    def getLevelNameStr(
+        level: int | str, *args: Any, strict: bool = False, **kwargs: Any
+    ) -> str:
+        """Convert a log level to its string name representation.
+
+        Unidirectional function that always returns a string. This is the recommended
+        way to convert log levels to strings when you want guaranteed string output
+        without compatibility mode behavior.
+
+        Unlike `getLevelName()` which has compatibility mode and bidirectional
+        behavior, this function always returns a string:
+        - Integer input: converts to level name string (returns "Level {level}"
+          for unknown levels unless strict=True)
+        - String input: validates level exists, then returns uppercased string
+
+        Handles all levels registered via logging.addLevelName() (including
+        standard library levels, custom apathetic levels, and user-registered levels).
+
+        Args:
+            level: Log level as integer or string name (case-insensitive)
+            *args: Additional positional arguments (for future-proofing)
+            strict: If True, raise ValueError for unknown integer levels.
+                If False (default), returns "Level {level}" format for unknown
+                integer levels (matching stdlib behavior).
+            **kwargs: Additional keyword arguments (for future-proofing)
+
+        Returns:
+            Level name as uppercase string
+
+        Raises:
+            ValueError: If string level cannot be resolved to a known level,
+                or if strict=True and integer level cannot be resolved to a
+                known level
+
+        Example:
+            >>> getLevelNameStr(10)
+            "DEBUG"
+            >>> getLevelNameStr(5)
+            "TRACE"
+            >>> getLevelNameStr("DEBUG")
+            "DEBUG"
+            >>> getLevelNameStr("debug")
+            "DEBUG"
+            >>> getLevelNameStr(999)  # Unknown integer, strict=False (default)
+            "Level 999"
+            >>> getLevelNameStr(999, strict=True)  # Unknown integer, strict=True
+            ValueError: Unknown log level: 999
+            >>> getLevelNameStr("UNKNOWN")
+            ValueError: Unknown log level: 'UNKNOWN'
+
+        See Also:
+            getLevelNumber() - Convert string to int (complementary function)
+            getLevelName() - Bidirectional conversion with compatibility mode
+        """
+        # If string input, validate it exists and return canonical name
+        if isinstance(level, str):
+            # Validate level exists (raises ValueError if not)
+            ApatheticLogging_Internal_LoggingUtils.getLevelNumber(level)
+            return level.upper()
+
+        # Integer input: convert to level name string
+        result = logging.getLevelName(level, *args, **kwargs)
+        # logging.getLevelName always returns str for int input
+
+        # If input was int and result is "Level {level}" format and strict is on, raise
+        if result.startswith("Level ") and strict:
+            msg = f"Unknown log level: {level}"
+            raise ValueError(msg)
+
+        # level name or (strict=False) "Level {int}"
+        return result
+
+    @staticmethod
+    def hasLogger(logger_name: str) -> bool:
+        """Check if a logger exists in the logging manager's registry.
+
+        Args:
+            logger_name: The name of the logger to check.
+
+        Returns:
+            True if the logger exists in the registry, False otherwise.
+        """
+        return logger_name in logging.Logger.manager.loggerDict
+
+    @staticmethod
+    def removeLogger(logger_name: str) -> None:
+        """Remove a logger from the logging manager's registry.
+
+        Args:
+            logger_name: The name of the logger to remove.
+        """
+        logging.Logger.manager.loggerDict.pop(logger_name, None)
+
+    @staticmethod
+    def _extractTopLevelPackage(package: str | None) -> str | None:
+        """Extract top-level package name from package string.
+
+        Args:
+            package: Package string (e.g., "myapp.submodule") or None
+
+        Returns:
+            Top-level package name (e.g., "myapp") or None if package is None
+        """
+        if package is None:
+            return None
+        if "." in package:
+            return package.split(".", 1)[0]
+        return package
+
+    @staticmethod
+    def _inferFromFrame(skip_frames: int, frame: FrameType | None) -> str | None:
+        """Infer logger name from caller's frame.
+
+        Args:
+            skip_frames: Number of frames to skip to get to actual caller
+            frame: Frame to start from, or None
+
+        Returns:
+            Inferred logger name or None if cannot be inferred
+        """
+        if frame is None:
+            return None
+        try:
+            # Skip the specified number of frames to get to the actual caller
+            caller_frame = frame.f_back
+            for _ in range(skip_frames):
+                if caller_frame is None:
+                    break
+                caller_frame = caller_frame.f_back
+            if caller_frame is None:
+                return None
+            caller_package = caller_frame.f_globals.get("__package__")
+            return ApatheticLogging_Internal_LoggingUtils._extractTopLevelPackage(
+                caller_package
+            )
+        finally:
+            del frame
+
+    @staticmethod
+    def getDefaultLoggerName(
+        logger_name: str | None = None,
+        *,
+        check_registry: bool = True,
+        skip_frames: int = 1,
+        raise_on_error: bool = False,
+        infer: bool = True,
+        register: bool = False,
+    ) -> str | None:
+        """Get default logger name with optional inference from caller's frame.
+
+        This function handles the common pattern of:
+        1. Using explicit name if provided
+        2. Checking registry if requested
+        3. Inferring from caller's frame if needed (when infer=True)
+        4. Storing inferred name in registry (when register=True)
+        5. Returning None or raising error if still unresolved
+
+        Args:
+            logger_name: Explicit logger name, or None to infer.
+            check_registry: If True, check registry before inferring. Use False
+                when the caller should actively determine the name from current
+                context (e.g., registerLogger() which should re-infer even
+                if a name is already registered). Use True when the caller should
+                use a previously registered name if available (e.g., getLogger()
+                which should use the registered name).
+            skip_frames: Number of frames to skip from this function to get to
+                the actual caller. Default is 1 (skips this function's frame).
+            raise_on_error: If True, raise RuntimeError if logger name cannot be
+                resolved. If False (default), return None instead. Use True when
+                a logger name is required (e.g., when creating a logger).
+            infer: If True (default), attempt to infer logger name from caller's
+                frame when not found in registry. If False, skip inference and
+                return None if not found in registry.
+            register: If True, store inferred name in registry. If False (default),
+                do not modify registry. Note: Explicit names are never stored regardless
+                of this parameter.
+
+        Returns:
+            Resolved logger name, or None if cannot be resolved and
+            raise_on_error=False.
+
+        Raises:
+            RuntimeError: If logger name cannot be resolved and raise_on_error=True.
+        """
+        # Import locally to avoid circular import
+
+        _registry_data = ApatheticLogging_Internal_RegistryData
+
+        # If explicit name provided, return it (never store explicit names)
+        # Note: Empty string ("") is a special case - it represents the root logger
+        # and is returned as-is to match standard library behavior.
+        if logger_name is not None:
+            return logger_name
+
+        # Check registry if requested
+        if check_registry:
+            registered_name = _registry_data.registered_internal_logger_name
+            if registered_name is not None:
+                return registered_name
+
+        # Try to infer from caller's frame if inference is enabled
+        if not infer:
+            # Inference disabled - return None or raise error
+            if raise_on_error:
+                error_msg = (
+                    "Cannot resolve logger name: not in registry and inference "
+                    "is disabled. Please call registerLogger() with an "
+                    "explicit logger name or enable inference."
+                )
+                raise RuntimeError(error_msg)
+            return None
+
+        # Get current frame (this function's frame) and skip to caller
+        frame = inspect.currentframe()
+        inferred_name = ApatheticLogging_Internal_LoggingUtils._inferFromFrame(
+            skip_frames, frame
+        )
+
+        # Store inferred name in registry if requested
+        if inferred_name is not None and register:
+            _registry_data.registered_internal_logger_name = inferred_name
+
+        # Return inferred name or handle error
+        if inferred_name is not None:
+            return inferred_name
+
+        # Handle error case
+        if raise_on_error:
+            error_msg = (
+                "Cannot auto-infer logger name: __package__ is not set in the "
+                "calling module. Please call registerLogger() with an "
+                "explicit logger name."
+            )
+            raise RuntimeError(error_msg)
+
+        return None
+
+    @staticmethod
+    def checkPythonVersionRequirement(
+        required_version: tuple[int, int],
+        function_name: str,
+    ) -> None:
+        """Check if the target or runtime Python version meets the requirement.
+
+        This method validates that a function requiring a specific Python version
+        can be called safely. It checks:
+        1. Target version (if set via registerTargetPythonVersion), otherwise
+           falls back to TARGET_PYTHON_VERSION from constants
+        2. Runtime version (as a safety net to catch actual runtime issues)
+
+        This allows developers to catch version incompatibilities during development
+        even when running on a newer Python version than their target.
+
+        Args:
+            required_version: Target Python version required (major, minor) tuple
+            function_name: Name of the function being checked (for error messages)
+
+        Raises:
+            NotImplementedError: If target version or runtime version doesn't meet
+                the requirement. Error message includes guidance on raising target
+                version if applicable.
+
+        Example:
+            >>> checkPythonVersionRequirement((3, 11), "get_level_names_mapping")
+            # Raises if target version < 3.11 or runtime version < 3.11
+        """
+        # Import locally to avoid circular imports
+
+        _constants = ApatheticLogging_Internal_Constants
+        _registry_data = ApatheticLogging_Internal_RegistryData
+
+        # Determine effective target version
+        # If target version is set, use it; otherwise fall back to TARGET_PYTHON_VERSION
+        target_version = _registry_data.registered_internal_target_python_version
+        if target_version is None:
+            target_version = _constants.TARGET_PYTHON_VERSION
+
+        # Check target version first (primary check)
+        # Skip check if target_version is None (checks disabled)
+        if target_version is not None and target_version < required_version:
+            req_major, req_minor = required_version
+            tgt_major, tgt_minor = target_version
+            msg = (
+                f"{function_name} requires Python {req_major}.{req_minor}+, "
+                f"but target version is {tgt_major}.{tgt_minor}. "
+                f"To use this function, call "
+                f"registerTargetPythonVersion(({req_major}, {req_minor})) "
+                f"or raise your target version to at least {req_major}.{req_minor}."
+            )
+            raise NotImplementedError(msg)
+
+        # Check runtime version as safety net
+        runtime_version = (sys.version_info.major, sys.version_info.minor)
+        if runtime_version < required_version:
+            req_major, req_minor = required_version
+            rt_major, rt_minor = runtime_version
+            msg = (
+                f"{function_name} requires Python {req_major}.{req_minor}+, "
+                f"but runtime version is {rt_major}.{rt_minor}. "
+                f"This function is not available in your Python version."
+            )
+            raise NotImplementedError(msg)
+
+
+# === apathetic_logging.safe_logging ===
+# src/apathetic_logging/safe_logging.py
+"""Safe logging utilities for Apathetic Logging."""
+
 
 # Lazy, safe import — avoids patched time modules
 #   in environments like pytest or eventlet
 _real_time = importlib.import_module("time")
 
-# ANSI Colors
-RESET = "\033[0m"
-CYAN = "\033[36m"
-YELLOW = "\033[93m"  # or \033[33m
-RED = "\033[91m"  # or \033[31m # or background \033[41m
-GREEN = "\033[92m"  # or \033[32m
-GRAY = "\033[90m"
 
-# Logger levels
-# most verbose, bypasses capture (2, not 0 to avoid NOTSET)
-TEST_LEVEL = logging.DEBUG - 8
-TRACE_LEVEL = logging.DEBUG - 5
-# DEBUG      - builtin # verbose
-# INFO       - builtin
-# WARNING    - builtin
-# ERROR      - builtin
-# CRITICAL   - builtin # quiet mode
-SILENT_LEVEL = logging.CRITICAL + 1  # one above the highest builtin level
+class ApatheticLogging_Internal_SafeLogging:  # noqa: N801  # pyright: ignore[reportUnusedClass]
+    """Mixin class that provides safe logging utilities.
 
-LEVEL_ORDER = [
-    "test",  # most verbose, bypasses capture for debugging tests
-    "trace",
-    "debug",
-    "info",
-    "warning",
-    "error",
-    "critical",
-    "silent",  # disables all logging
-]
-
-TAG_STYLES = {
-    "TEST": (GRAY, "[TEST]"),
-    "TRACE": (GRAY, "[TRACE]"),
-    "DEBUG": (CYAN, "[DEBUG]"),
-    "WARNING": ("", "⚠️ "),
-    "ERROR": ("", "❌ "),
-    "CRITICAL": ("", "💥 "),
-}
-
-# sanity check
-assert set(TAG_STYLES.keys()) <= {lvl.upper() for lvl in LEVEL_ORDER}, (  # noqa: S101
-    "TAG_STYLES contains unknown levels"
-)
-
-# --- globals ---------------------------------------------------------------
-
-# Registry for configurable log level settings
-_registered_log_level_env_vars: list[str] | None = None
-_registered_default_log_level: str | None = None
-
-
-# --- Logging that bypasses streams -------------------------------------------------
-
-
-def safe_log(msg: str) -> None:
-    """Emergency logger that never fails."""
-    stream = cast("TextIO", sys.__stderr__)
-    try:
-        print(msg, file=stream)
-    except Exception:  # noqa: BLE001
-        # As final guardrail — never crash during crash reporting
-        with suppress(Exception):
-            stream.write(f"[INTERNAL] {msg}\n")
-
-
-# --- Logging for debugging tests -------------------------------------------------
-
-
-def make_test_trace(icon: str = "🧵") -> Callable[..., Any]:
-    def local_trace(label: str, *args: Any) -> Any:
-        return TEST_TRACE(label, *args, icon=icon)
-
-    return local_trace
-
-
-def TEST_TRACE(label: str, *args: Any, icon: str = "🧵") -> None:
-    """Emit a synchronized, flush-safe diagnostic line.
-
-    Args:
-        label: Short identifier or context string.
-        *args: Optional values to append.
-        icon: Emoji prefix/suffix for easier visual scanning.
-
+    This class contains both safeLog and safeTrace implementations as static
+    methods. When mixed into apathetic_logging, it provides:
+    - apathetic_logging.safeLog
+    - apathetic_logging.safeTrace
+    - apathetic_logging.makeSafeTrace
     """
-    if not TEST_TRACE_ENABLED:
-        return
 
-    ts = _real_time.monotonic()
-    # builtins.print more reliable than sys.stdout.write + sys.stdout.flush
-    builtins.print(
-        f"{icon} [TEST TRACE {ts:.6f}] {label}",
-        *args,
-        file=sys.__stderr__,
-        flush=True,
-    )
+    @staticmethod
+    def safeLog(msg: str) -> None:
+        """Emergency logger that never fails."""
+        stream = cast("TextIO", sys.__stderr__)
+        try:
+            print(msg, file=stream)
+        except Exception:  # noqa: BLE001
+            # As final guardrail — never crash during crash reporting
+            with suppress(Exception):
+                stream.write(f"[INTERNAL] {msg}\n")
+
+    @staticmethod
+    def makeSafeTrace(icon: str = "🧪") -> Callable[..., Any]:
+        """Create a trace function with a custom icon. Assign it to a variable.
+
+        Args:
+            icon: Emoji prefix/suffix for easier visual scanning
+
+        Returns:
+            A callable trace function
+        """
+        _safe_logging = ApatheticLogging_Internal_SafeLogging
+
+        def localTrace(label: str, *args: Any) -> Any:
+            return _safe_logging.safeTrace(label, *args, icon=icon)
+
+        return localTrace
+
+    @staticmethod
+    def safeTrace(label: str, *args: Any, icon: str = "🧪") -> None:
+        """Emit a synchronized, flush-safe diagnostic line.
+
+        Mainly for troubleshooting and tests, avoids the
+        logging framework and capture systems, can work even
+        pre-logging framework initialization.
+
+        Args:
+            label: Short identifier or context string.
+            *args: Optional values to append.
+            icon: Emoji prefix/suffix for easier visual scanning.
+
+        """
+        _constants = ApatheticLogging_Internal_Constants
+        if not _constants.SAFE_TRACE_ENABLED:
+            return
+
+        ts = _real_time.monotonic()
+        # builtins.print more reliable than sys.stdout.write + sys.stdout.flush
+        builtins.print(
+            f"{icon} [SAFE TRACE {ts:.6f}] {label}",
+            *args,
+            file=sys.__stderr__,
+            flush=True,
+        )
 
 
-# --- Apathetic logger -----------------------------------------------------
+# === apathetic_logging.registry ===
+# src/apathetic_logging/registry.py
+"""Registry functionality for Apathetic Logging."""
 
 
-class ApatheticCLILogger(logging.Logger):
-    """Logger for all Apathetic CLI tools."""
+class ApatheticLogging_Internal_Registry:  # noqa: N801  # pyright: ignore[reportUnusedClass]
+    """Mixin class that provides registration methods.
+
+    This class contains static methods for registering configuration values.
+    When mixed into apathetic_logging, it provides registration methods for
+    log level environment variables, default log level, logger name, and
+    target Python version.
+
+    Registry storage is provided by ``ApatheticLogging_Internal_RegistryData``.
+
+    **Static Methods:**
+    - ``registerDefaultLogLevel()``: Register the default log level
+    - ``registerLogLevelEnvVars()``: Register environment variable names
+    - ``registerLogger()``: Register a logger (public API)
+    - ``registerTargetPythonVersion()``: Register target Python version
+    - ``registerPropagate()``: Register propagate setting
+    - ``registerCompatibilityMode()``: Register compatibility mode setting
+    """
+
+    _LoggerType = TypeVar("_LoggerType", bound=logging.Logger)
+
+    @staticmethod
+    def registerDefaultLogLevel(default_level: str | None) -> None:
+        """Register the default log level to use when no other source is found.
+
+        Args:
+            default_level: Default log level name (e.g., "info", "warning").
+                If None, returns immediately without making any changes.
+
+        Example:
+            >>> from apathetic_logging import ApatheticLogging
+            >>> apathetic_logging.registerDefaultLogLevel("warning")
+        """
+        if default_level is None:
+            return
+
+        _registry_data = ApatheticLogging_Internal_RegistryData
+        _safe_logging = ApatheticLogging_Internal_SafeLogging
+
+        _registry_data.registered_internal_default_log_level = default_level
+        _safe_logging.safeTrace(
+            "registerDefaultLogLevel() called",
+            f"default_level={default_level}",
+        )
+
+    @staticmethod
+    def registerLogLevelEnvVars(env_vars: list[str] | None) -> None:
+        """Register environment variable names to check for log level.
+
+        The environment variables will be checked in order, and the first
+        non-empty value found will be used.
+
+        Args:
+            env_vars: List of environment variable names to check
+                (e.g., ["SERGER_LOG_LEVEL", "LOG_LEVEL"]).
+                If None, returns immediately without making any changes.
+
+        Example:
+            >>> from apathetic_logging import ApatheticLogging
+            >>> apathetic_logging.registerLogLevelEnvVars(
+            ...     ["MYAPP_LOG_LEVEL", "LOG_LEVEL"]
+            ... )
+        """
+        if env_vars is None:
+            return
+
+        _registry_data = ApatheticLogging_Internal_RegistryData
+        _safe_logging = ApatheticLogging_Internal_SafeLogging
+
+        _registry_data.registered_internal_log_level_env_vars = env_vars
+        _safe_logging.safeTrace(
+            "registerLogLevelEnvVars() called",
+            f"env_vars={env_vars}",
+        )
+
+    @staticmethod
+    def registerLogger(
+        logger_name: str | None = None,
+        logger_class: type[ApatheticLogging_Internal_Registry._LoggerType]
+        | None = None,
+        *,
+        target_python_version: tuple[int, int] | None = None,
+        log_level_env_vars: list[str] | None = None,
+        default_log_level: str | None = None,
+        propagate: bool | None = None,
+        compat_mode: bool | None = None,
+    ) -> None:
+        """Register a logger for use by getLogger().
+
+        This is the public API for registering a logger. It registers the logger
+        name and extends the logging module with custom levels if needed.
+
+        If logger_name is not provided, the top-level package is automatically
+        extracted from the calling module's __package__ attribute.
+
+        If logger_class is provided and has an ``extendLoggingModule()``
+        method, it will be called to extend the logging module with custom
+        levels and set the logger class. If logger_class is provided but does
+        not have ``extendLoggingModule()``, ``logging.setLoggerClass()``
+        will be called directly to set the logger class. If logger_class is not
+        provided, nothing is done with the logger class (the default ``Logger``
+        is already extended at import time).
+
+        **Important**: If you're using a custom logger class that has
+        ``extendLoggingModule()``, do not call ``logging.setLoggerClass()``
+        directly. Instead, pass the class to ``registerLogger()`` and let
+        ``extendLoggingModule()`` handle setting the logger class. This
+        ensures consistent behavior and avoids class identity issues in
+        singlefile mode.
+
+        Args:
+            logger_name: The name of the logger to retrieve (e.g., "myapp").
+                If None, extracts the top-level package from __package__.
+            logger_class: Optional logger class to use. If provided and the class
+                has an ``extendLoggingModule()`` method, it will be called.
+                If the class doesn't have that method, ``logging.setLoggerClass()``
+                will be called directly. If None, nothing is done (default Logger
+                is already set up at import time).
+            target_python_version: Optional target Python version (major, minor)
+                tuple. If provided, sets the target Python version in the registry
+                permanently. Defaults to None (no change).
+            log_level_env_vars: Optional list of environment variable names to
+                check for log level. If provided, sets the log level environment
+                variables in the registry permanently. Defaults to None (no change).
+            default_log_level: Optional default log level name. If provided, sets
+                the default log level in the registry permanently. Defaults to None
+                (no change).
+            propagate: Optional propagate setting. If provided, sets the propagate
+                value in the registry permanently. If None, uses registered propagate
+                setting or falls back to DEFAULT_PROPAGATE from constants.py.
+                Defaults to None (no change).
+            compat_mode: Optional compatibility mode setting. If provided, sets
+                the compatibility mode in the registry permanently. When True, restores
+                stdlib-compatible behavior where possible (e.g., getLogger(None) returns
+                root logger). If None, uses registered compatibility mode setting or
+                defaults to False (improved behavior). Defaults to None (no change).
+
+        Example:
+            >>> # Explicit registration with default Logger (already extended)
+            >>> from apathetic_logging import registerLogger
+            >>> registerLogger("myapp")
+
+            >>> # Auto-infer from __package__
+            >>> registerLogger()
+            ...     # Uses top-level package from __package__
+
+            >>> # Register with custom logger class (has extendLoggingModule)
+            >>> from apathetic_logging import Logger
+            >>> class AppLogger(Logger):
+            ...     pass
+            >>> # Don't call AppLogger.extendLoggingModule() or
+            >>> # logging.setLoggerClass() directly - registerLogger() handles it
+            >>> registerLogger("myapp", AppLogger)
+
+            >>> # Register with any logger class (no extendLoggingModule)
+            >>> import logging
+            >>> class SimpleLogger(logging.Logger):
+            ...     pass
+            >>> registerLogger("myapp", SimpleLogger)  # Sets logger class directly
+        """
+        _registry = ApatheticLogging_Internal_Registry
+        _registry_data = ApatheticLogging_Internal_RegistryData
+        _logging_utils = ApatheticLogging_Internal_LoggingUtils
+        _safe_logging = ApatheticLogging_Internal_SafeLogging
+
+        # Handle convenience parameters that set registry values
+        _registry.registerTargetPythonVersion(target_python_version)
+        _registry.registerLogLevelEnvVars(log_level_env_vars)
+        _registry.registerDefaultLogLevel(default_log_level)
+        _registry.registerPropagate(propagate=propagate)
+        _registry.registerCompatibilityMode(compat_mode=compat_mode)
+
+        # Import Logger locally to avoid circular import
+
+        # Track if name was auto-inferred
+        was_explicit = logger_name is not None
+
+        # Resolve logger name (with inference if needed)
+        # skip_frames=1 because: registerLogger -> getDefaultLoggerName -> caller
+        # check_registry=False because registerLogger() should actively determine
+        # the name from the current context, not return an old registered name. This
+        # allows re-inferring from __package__ if the package context has changed.
+        # raise_on_error=True because registerLogger() requires a logger name.
+        # register=True because registerLogger() should store the resolved name.
+        resolved_name = _logging_utils.getDefaultLoggerName(
+            logger_name,
+            check_registry=False,
+            skip_frames=1,
+            raise_on_error=True,
+            infer=True,
+            register=True,
+        )
+
+        if logger_class is not None:
+            # extendLoggingModule will call setLoggerClass for those that support it
+            if hasattr(logger_class, "extendLoggingModule"):
+                logger_class.extendLoggingModule()  # type: ignore[attr-defined]
+            else:
+                # stdlib unwrapped
+                logging.setLoggerClass(logger_class)
+
+        # registerLogger always stores the result (explicit or inferred)
+        _registry_data.registered_internal_logger_name = resolved_name
+
+        _safe_logging.safeTrace(
+            "registerLogger() called",
+            f"name={resolved_name}",
+            f"auto_inferred={not was_explicit}",
+            f"logger_class={logger_class.__name__ if logger_class else None}",
+        )
+
+    @staticmethod
+    def registerTargetPythonVersion(version: tuple[int, int] | None) -> None:
+        """Register the target Python version for compatibility checking.
+
+        This sets the target Python version that will be used to validate
+        function calls. If a function requires a Python version newer than
+        the target version, it will raise a NotImplementedError even if
+        the runtime version is sufficient.
+
+        If not set, the library defaults to TARGET_PYTHON_VERSION (3, 10) from
+        constants.py. This allows developers to catch version incompatibilities
+        during development even when running on a newer Python version than
+        their target.
+
+        Args:
+            version: Target Python version as (major, minor) tuple
+                (e.g., (3, 10) or (3, 11)). If None, returns immediately
+                without making any changes.
+
+        Example:
+            >>> from apathetic_logging import registerTargetPythonVersion
+            >>> registerTargetPythonVersion((3, 10))
+            >>> # Now functions requiring 3.11+ will raise if called
+
+        Note:
+            The runtime version is still checked as a safety net. If the
+            runtime version is older than required, the function will still
+            raise an error even if the target version is sufficient.
+        """
+        if version is None:
+            return
+
+        _registry_data = ApatheticLogging_Internal_RegistryData
+        _safe_logging = ApatheticLogging_Internal_SafeLogging
+
+        _registry_data.registered_internal_target_python_version = version
+        _safe_logging.safeTrace(
+            "registerTargetPythonVersion() called",
+            f"version={version[0]}.{version[1]}",
+        )
+
+    @staticmethod
+    def registerPropagate(*, propagate: bool | None) -> None:
+        """Register the propagate setting for loggers.
+
+        This sets the default propagate value that will be used when creating
+        loggers. If not set, the library defaults to DEFAULT_PROPAGATE (False)
+        from constants.py.
+
+        When propagate is False, loggers do not propagate messages to parent
+        loggers, avoiding duplicate root logs.
+
+        Args:
+            propagate: Propagate setting (True or False). If None, returns
+                immediately without making any changes.
+
+        Example:
+            >>> from apathetic_logging import registerPropagate
+            >>> registerPropagate(propagate=True)
+            >>> # Now new loggers will propagate by default
+        """
+        if propagate is None:
+            return
+
+        _registry_data = ApatheticLogging_Internal_RegistryData
+        _safe_logging = ApatheticLogging_Internal_SafeLogging
+
+        _registry_data.registered_internal_propagate = propagate
+        _safe_logging.safeTrace(
+            "registerPropagate() called",
+            f"propagate={propagate}",
+        )
+
+    @staticmethod
+    def registerCompatibilityMode(*, compat_mode: bool | None) -> None:
+        """Register the compatibility mode setting for stdlib drop-in replacement.
+
+        This sets the compatibility mode that will be used when creating loggers.
+        If not set, the library defaults to False (improved behavior).
+
+        When compat_mode is True, restores stdlib-compatible behavior where
+        possible (e.g., getLogger(None) returns root logger instead of auto-inferring).
+
+        Args:
+            compat_mode: Compatibility mode setting (True or False). If None,
+                returns immediately without making any changes.
+
+        Example:
+            >>> from apathetic_logging import registerCompatibilityMode
+            >>> registerCompatibilityMode(compat_mode=True)
+            >>> # Now getLogger(None) returns root logger (stdlib behavior)
+        """
+        if compat_mode is None:
+            return
+
+        _registry_data = ApatheticLogging_Internal_RegistryData
+        _safe_logging = ApatheticLogging_Internal_SafeLogging
+
+        _registry_data.registered_internal_compatibility_mode = compat_mode
+        _safe_logging.safeTrace(
+            "registerCompatibilityMode() called",
+            f"compat_mode={compat_mode}",
+        )
+
+    @staticmethod
+    def getLogLevelEnvVars() -> list[str]:
+        """Get the environment variable names to check for log level.
+
+        Returns the registered environment variable names, or the default
+        environment variables if none are registered.
+
+        Returns:
+            List of environment variable names to check for log level.
+            Defaults to ["LOG_LEVEL"] if not registered.
+
+        Example:
+            >>> from apathetic_logging import getLogLevelEnvVars
+            >>> env_vars = getLogLevelEnvVars()
+            >>> print(env_vars)
+            ["LOG_LEVEL"]
+        """
+        _constants = ApatheticLogging_Internal_Constants
+        _registry_data = ApatheticLogging_Internal_RegistryData
+
+        return (
+            _registry_data.registered_internal_log_level_env_vars
+            or _constants.DEFAULT_APATHETIC_LOG_LEVEL_ENV_VARS
+        )
+
+    @staticmethod
+    def getDefaultLogLevel() -> str:
+        """Get the default log level.
+
+        Returns the registered default log level, or the module default
+        if none is registered.
+
+        Returns:
+            Default log level name (e.g., "detail", "info").
+            Defaults to "detail" if not registered.
+
+        Example:
+            >>> from apathetic_logging import getDefaultLogLevel
+            >>> level = getDefaultLogLevel()
+            >>> print(level)
+            "detail"
+        """
+        _constants = ApatheticLogging_Internal_Constants
+        _registry_data = ApatheticLogging_Internal_RegistryData
+
+        return (
+            _registry_data.registered_internal_default_log_level
+            or _constants.DEFAULT_APATHETIC_LOG_LEVEL
+        )
+
+    @staticmethod
+    def getRegisteredLoggerName() -> str | None:
+        """Get the registered logger name.
+
+        Returns the registered logger name, or None if no logger name
+        has been registered. Unlike getDefaultLoggerName(), this does not
+        perform inference - it only returns the explicitly registered value.
+
+        Returns:
+            Registered logger name, or None if not registered.
+
+        Example:
+            >>> from apathetic_logging import getRegisteredLoggerName
+            >>> name = getRegisteredLoggerName()
+            >>> if name is None:
+            ...     print("No logger name registered")
+        """
+        _registry_data = ApatheticLogging_Internal_RegistryData
+
+        return _registry_data.registered_internal_logger_name
+
+    @staticmethod
+    def getTargetPythonVersion() -> tuple[int, int] | None:
+        """Get the target Python version.
+
+        Returns the registered target Python version, or the minimum
+        supported version if none is registered.
+
+        Returns:
+            Target Python version as (major, minor) tuple, or None if
+            no version is registered and TARGET_PYTHON_VERSION is None
+            (checks disabled).
+
+        Example:
+            >>> from apathetic_logging import getTargetPythonVersion
+            >>> version = getTargetPythonVersion()
+            >>> print(version)
+            (3, 10)  # or None if checks are disabled
+        """
+        _constants = ApatheticLogging_Internal_Constants
+        _registry_data = ApatheticLogging_Internal_RegistryData
+
+        return (
+            _registry_data.registered_internal_target_python_version
+            or _constants.TARGET_PYTHON_VERSION
+        )
+
+    @staticmethod
+    def getDefaultPropagate() -> bool:
+        """Get the default propagate setting.
+
+        Returns the registered propagate setting, or the module default
+        if none is registered.
+
+        Returns:
+            Default propagate setting (True or False).
+            Defaults to False if not registered.
+
+        Example:
+            >>> from apathetic_logging import getDefaultPropagate
+            >>> propagate = getDefaultPropagate()
+            >>> print(propagate)
+            False
+        """
+        _constants = ApatheticLogging_Internal_Constants
+        _registry_data = ApatheticLogging_Internal_RegistryData
+
+        return (
+            _registry_data.registered_internal_propagate
+            if _registry_data.registered_internal_propagate is not None
+            else _constants.DEFAULT_PROPAGATE
+        )
+
+    @staticmethod
+    def getCompatibilityMode() -> bool:
+        """Get the compatibility mode setting.
+
+        Returns the registered compatibility mode setting, or False (improved
+        behavior) if not registered.
+
+        Returns:
+            Compatibility mode setting (True or False).
+            Defaults to False if not registered.
+
+        Example:
+            >>> from apathetic_logging import getCompatibilityMode
+            >>> compat_mode = getCompatibilityMode()
+            >>> print(compat_mode)
+            False
+        """
+        _registry_data = ApatheticLogging_Internal_RegistryData
+
+        return (
+            _registry_data.registered_internal_compatibility_mode
+            if _registry_data.registered_internal_compatibility_mode is not None
+            else False
+        )
+
+
+# === apathetic_logging.tag_formatter ===
+# src/apathetic_logging/tag_formatter.py
+"""TagFormatter class for Apathetic Logging.
+
+Docstrings are adapted from the standard library logging.Formatter documentation
+licensed under the Python Software Foundation License Version 2.
+"""
+
+
+class ApatheticLogging_Internal_TagFormatter:  # noqa: N801  # pyright: ignore[reportUnusedClass]
+    """Mixin class that provides the TagFormatter nested class.
+
+    This class contains the TagFormatter implementation as a nested class.
+    When mixed into apathetic_logging, it provides apathetic_logging.TagFormatter.
+    """
+
+    class TagFormatter(logging.Formatter):
+        """Formatter that adds level tags to log messages.
+
+        Adds colored or plain text tags (e.g., [DEBUG], [ERROR]) based on
+        log level. Color support is controlled by the enable_color attribute
+        on the LogRecord.
+        """
+
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            """Initialize the TagFormatter.
+
+            Wrapper for logging.Formatter.__init__ with future-proofing.
+            """
+            super().__init__(*args, **kwargs)
+
+        def format(
+            self,
+            record: logging.LogRecord,
+            *args: Any,
+            **kwargs: Any,
+        ) -> str:
+            """Format a log record with level tag prefix.
+
+            Args:
+                record: LogRecord to format
+                *args: Additional positional arguments (for future-proofing)
+                **kwargs: Additional keyword arguments (for future-proofing)
+
+            Returns:
+                Formatted message with optional level tag prefix
+            """
+            _constants = ApatheticLogging_Internal_Constants
+            tag_color, tag_text = _constants.TAG_STYLES.get(record.levelname, ("", ""))
+            msg = super().format(record, *args, **kwargs)
+            if tag_text:
+                if getattr(record, "enable_color", False) and tag_color:
+                    prefix = f"{tag_color}{tag_text}{_constants.ANSIColors.RESET}"
+                else:
+                    prefix = tag_text
+                return f"{prefix} {msg}"
+            return msg
+
+
+# === apathetic_logging.logger ===
+# src/apathetic_logging/logger.py
+"""Core Logger implementation for Apathetic Logging.
+
+See https://docs.python.org/3/library/logging.html#logging.Logger for the
+complete list of standard library Logger methods that are extended by this class.
+
+Docstrings are adapted from the standard library logging.Logger documentation
+licensed under the Python Software Foundation License Version 2.
+"""
+
+
+class ApatheticLogging_Internal_LoggerCore(logging.Logger):  # noqa: N801  # pyright: ignore[reportUnusedClass]
+    """Core Logger implementation for all Apathetic tools.
+
+    This class contains the core Logger implementation.
+    It provides all the custom methods and functionality for apathetic logging.
+    """
 
     enable_color: bool = False
+    """Enable ANSI color output for log messages."""
 
     _logging_module_extended: bool = False
 
     # if stdout or stderr are redirected, we need to repoint
     _last_stream_ids: tuple[TextIO, TextIO] | None = None
+
+    DEFAULT_STACKLEVEL = 2
+    """Default stacklevel for errorIfNotDebug/criticalIfNotDebug methods."""
 
     def __init__(
         self,
@@ -205,85 +1491,138 @@ class ApatheticCLILogger(logging.Logger):
         level: int = logging.NOTSET,
         *,
         enable_color: bool | None = None,
+        propagate: bool = False,
     ) -> None:
-        # it is too late to call extend_logging_module
+        """Initialize the logger.
+
+        Resolves log level, color support, and log propagation.
+
+        Args:
+            name: Logger name
+            level: Initial logging level (defaults to NOTSET, then auto-resolved)
+            enable_color: Force color output on/off, or None for auto-detect
+            propagate: False avoids duplicate root logs
+        """
+        # it is too late to call extendLoggingModule
 
         # now let's init our logger
         super().__init__(name, level)
 
         # default level resolution
         if self.level == logging.NOTSET:
-            self.setLevel(self.determine_log_level())
+            self.setLevel(self.determineLogLevel())
 
         # detect color support once per instance
         self.enable_color = (
             enable_color
             if enable_color is not None
-            else type(self).determine_color_enabled()
+            else type(self).determineColorEnabled()
         )
 
-        self.propagate = False  # avoid duplicate root logs
+        self.propagate = propagate
 
-        # handler attachment will happen in _log() with ensure_handlers()
+        # handler attachment will happen in _log() with ensureHandlers()
 
-    def ensure_handlers(self) -> None:
+    def ensureHandlers(self) -> None:
+        """Ensure handlers are attached to this logger.
+
+        DualStreamHandler is what will ensure logs go to the write channel.
+
+        Rebuilds handlers if they're missing or if stdout/stderr have changed.
+        """
+        _dual_stream_handler = ApatheticLogging_Internal_DualStreamHandler
+        _tag_formatter = ApatheticLogging_Internal_TagFormatter
+        _safe_logging = ApatheticLogging_Internal_SafeLogging
         if self._last_stream_ids is None or not self.handlers:
             rebuild = True
         else:
             last_stdout, last_stderr = self._last_stream_ids
-            rebuild = (last_stdout is not sys.stdout) or (last_stderr is not sys.stderr)
+            rebuild = last_stdout is not sys.stdout or last_stderr is not sys.stderr
 
         if rebuild:
             self.handlers.clear()
-            h = DualStreamHandler()
-            h.setFormatter(TagFormatter("%(message)s"))
+            h = _dual_stream_handler.DualStreamHandler()
+            h.setFormatter(_tag_formatter.TagFormatter("%(message)s"))
             h.enable_color = self.enable_color
             self.addHandler(h)
             self._last_stream_ids = (sys.stdout, sys.stderr)
-            TEST_TRACE("ensure_handlers()", f"rebuilt_handlers={self.handlers}")
+            _safe_logging.safeTrace(
+                "ensureHandlers()", f"rebuilt_handlers={self.handlers}"
+            )
 
     def _log(  # type: ignore[override]
         self, level: int, msg: str, args: tuple[Any, ...], **kwargs: Any
     ) -> None:
-        TEST_TRACE(
-            "_log",
-            f"logger={self.name}",
-            f"id={id(self)}",
-            f"level={self.level_name}",
-            f"msg={msg!r}",
-        )
-        self.ensure_handlers()
+        """Log a message with the specified level.
+
+        Changed:
+        - Automatically ensures handlers are attached via ensureHandlers()
+
+        Args:
+            level: The numeric logging level
+            msg: The message format string
+            args: Arguments for the message format string
+            **kwargs: Additional keyword arguments passed to the base implementation
+
+        Wrapper for logging.Logger._log.
+
+        https://docs.python.org/3.10/library/logging.html#logging.Logger._log
+        """
+        self.ensureHandlers()
         super()._log(level, msg, args, **kwargs)
 
-    def setLevel(self, level: int | str) -> None:
-        """Case insensitive version that resolves string level names.
+    def setLevel(self, level: int | str, *, minimum: bool | None = False) -> None:
+        """Set the logging level of this logger.
 
-        Validates that custom levels (TEST, TRACE, SILENT) are not set to 0,
-        which would cause NOTSET inheritance from root logger.
+        Changed:
+        - Accepts both int and str level values (case-insensitive for strings)
+        - Automatically resolves string level names to numeric values
+        - Supports custom level names (TEST, TRACE, MINIMAL, DETAIL, SILENT)
+        - Validates that custom levels are not set to 0, which would cause
+          NOTSET inheritance from root logger
+        - Added `minimum` parameter: if True, only sets the level if it's more
+          verbose (lower numeric value) than the current level
+
+        Args:
+            level: The logging level, either as an integer or a string name
+                (case-insensitive). Standard levels (DEBUG, INFO, WARNING, ERROR,
+                CRITICAL) and custom levels (TEST, TRACE, MINIMAL, DETAIL, SILENT)
+                are supported.
+            minimum: If True, only set the level if it's more verbose (lower
+                numeric value) than the current level. This prevents downgrading
+                from a more verbose level (e.g., TRACE) to a less verbose one
+                (e.g., DEBUG). Defaults to False. None is accepted and treated
+                as False.
+
+        Wrapper for logging.Logger.setLevel.
+
+        https://docs.python.org/3.10/library/logging.html#logging.Logger.setLevel
         """
-        # Resolve string to integer if needed
+        _logging_utils = ApatheticLogging_Internal_LoggingUtils
+
+        # Resolve string to integer if needed using utility function
         if isinstance(level, str):
-            level_str = level.upper()
-            # Resolve string level name to integer for Python 3.10 compatibility
-            resolved = self.resolve_level_name(level_str)
-            if resolved is not None:
-                level = resolved
-            else:
-                # Fall back to logging's built-in resolution (Python 3.11+)
-                # This will raise if the level name is invalid
-                pass
+            level = _logging_utils.getLevelNumber(level)
+
+        # Handle minimum level logic (None is treated as False)
+        if minimum:
+            current_level = self.getEffectiveLevel()
+            # Lower number = more verbose, so only set if new level is more verbose
+            if level >= current_level:
+                # Don't downgrade - keep current level
+                return
 
         # Validate any level <= 0 (prevents NOTSET inheritance)
         # Built-in levels (DEBUG=10, INFO=20, etc.) are all > 0, so they pass
-        # _validate_level_positive() will raise if level <= 0
-        if isinstance(level, int):
-            level_name = logging.getLevelName(level) or str(level)
-            self._validate_level_positive(level, level_name)
+        # validateLevelPositive() will raise if level <= 0
+        # At this point, level is guaranteed to be int (resolved above)
+        level_name = _logging_utils.getLevelNameStr(level)
+        self.validateLevelPositive(level, level_name=level_name)
 
         super().setLevel(level)
 
     @classmethod
-    def determine_color_enabled(cls) -> bool:
+    def determineColorEnabled(cls) -> bool:
         """Return True if colored output should be enabled."""
         # Respect explicit overrides
         if "NO_COLOR" in os.environ:
@@ -295,7 +1634,7 @@ class ApatheticCLILogger(logging.Logger):
         return sys.stdout.isatty()
 
     @staticmethod
-    def _validate_level_positive(level: int, level_name: str | None = None) -> None:
+    def validateLevelPositive(level: int, *, level_name: str | None = None) -> None:
         """Validate that a level value is positive (> 0).
 
         Custom levels with values <= 0 will inherit from the root logger,
@@ -304,19 +1643,21 @@ class ApatheticCLILogger(logging.Logger):
         Args:
             level: The numeric level value to validate
             level_name: Optional name for the level (for error messages).
-                If None, will attempt to get from logging.getLevelName()
+                If None, will attempt to get from getLevelName()
 
         Raises:
             ValueError: If level <= 0
 
         Example:
-            >>> ApatheticCLILogger._validate_level_positive(5, "TRACE")
-            >>> ApatheticCLILogger._validate_level_positive(0, "TEST")
-            ValueError: Custom level 'TEST' has value 0...
+            >>> Logger.validateLevelPositive(5, level_name="TRACE")
+            >>> Logger.validateLevelPositive(0, level_name="TEST")
+            ValueError: Level 'TEST' has value 0...
         """
         if level <= 0:
             if level_name is None:
-                level_name = logging.getLevelName(level) or str(level)
+                level_name = ApatheticLogging_Internal_LoggingUtils.getLevelNameStr(
+                    level
+                )
             msg = (
                 f"Level '{level_name}' has value {level}, "
                 "which is <= 0. This causes NOTSET inheritance from root logger. "
@@ -326,14 +1667,14 @@ class ApatheticCLILogger(logging.Logger):
 
     @staticmethod
     def addLevelName(level: int, level_name: str) -> None:
-        """Safely add a custom logging level name with validation.
+        """Associate a level name with a numeric level.
 
-        This is a wrapper around logging.addLevelName() that validates the level
-        value to prevent NOTSET inheritance issues. Custom levels with values <= 0
-        will inherit from the root logger, causing unexpected behavior.
-
-        Also sets logging.<LEVEL_NAME> attribute for convenience, matching the
-        pattern of built-in levels (logging.DEBUG, logging.INFO, etc.).
+        Changed:
+        - Validates that level value is positive (> 0) to prevent NOTSET
+          inheritance issues
+        - Sets logging.<LEVEL_NAME> attribute for convenience, matching the
+          pattern of built-in levels (logging.DEBUG, logging.INFO, etc.)
+        - Validates existing attributes to ensure consistency
 
         Args:
             level: The numeric level value (must be > 0 for custom levels)
@@ -344,13 +1685,14 @@ class ApatheticCLILogger(logging.Logger):
             ValueError: If logging.<LEVEL_NAME> already exists with an invalid value
                 (not a positive integer, or different from the provided level)
 
-        Example:
-            >>> ApatheticCLILogger.addLevelName(5, "TRACE")
-            >>> # Now logging.TRACE = 5 (convenience attribute)
-            >>> # logging.addLevelName(5, "TRACE")  # Equivalent, but unsafe
+        Wrapper for logging.addLevelName.
+
+        https://docs.python.org/3.10/library/logging.html#logging.addLevelName
         """
         # Validate level is positive
-        ApatheticCLILogger._validate_level_positive(level, level_name)
+        ApatheticLogging_Internal_LoggerCore.validateLevelPositive(
+            level, level_name=level_name
+        )
 
         # Check if attribute already exists and validate it
         existing_value = getattr(logging, level_name, None)
@@ -364,11 +1706,14 @@ class ApatheticCLILogger(logging.Logger):
                 )
                 raise ValueError(msg)
             # Validate existing value is positive
-            ApatheticCLILogger._validate_level_positive(existing_value, level_name)
+            ApatheticLogging_Internal_LoggerCore.validateLevelPositive(
+                existing_value, level_name=level_name
+            )
             if existing_value != level:
                 msg = (
                     f"Cannot set logging.{level_name}: attribute already exists "
-                    f"with different value {existing_value} (trying to set {level}). "
+                    f"with different value {existing_value} "
+                    f"(trying to set {level}). "
                     "Level attributes must match the level value."
                 )
                 raise ValueError(msg)
@@ -379,40 +1724,109 @@ class ApatheticCLILogger(logging.Logger):
         setattr(logging, level_name, level)
 
     @classmethod
-    def extend_logging_module(cls) -> bool:
+    def extendLoggingModule(
+        cls,
+    ) -> bool:
         """The return value tells you if we ran or not.
         If it is False and you're calling it via super(),
-        you can likely skip your code too."""
-        # ensure module-level logging setup runs only once
-        if cls._logging_module_extended:
+        you can likely skip your code too.
+
+        Note for tests:
+            When testing isinstance checks on logger instances, use
+            ``logging.getLoggerClass()`` instead of direct class references
+            (e.g., ``mod_alogs.Logger``). This works reliably in both installed
+            and singlefile runtime modes because it uses the actual class object
+            that was set via ``logging.setLoggerClass()``, rather than a class
+            reference from the import shim which may have different object identity
+            in singlefile mode.
+
+        Example:
+                # ✅ Good: Works in both installed and singlefile modes
+                assert isinstance(logger, logging.getLoggerClass())
+
+                # ❌ May fail in singlefile mode due to class identity differences
+                assert isinstance(logger, mod_alogs.Logger)
+        """
+        _constants = ApatheticLogging_Internal_Constants
+        # Check if this specific class has already extended the module
+        # (not inherited from base class)
+        already_extended = getattr(cls, "_logging_module_extended", False)
+
+        # Always set the logger class to cls, even if already extended.
+        # This allows subclasses to override the logger class.
+        # stdlib unwrapped
+        logging.setLoggerClass(cls)
+
+        # If already extended, skip the rest (level registration, etc.)
+        if already_extended:
             return False
         cls._logging_module_extended = True
 
-        logging.setLoggerClass(cls)
+        # Sanity check: validate TAG_STYLES keys are in LEVEL_ORDER
+        if __debug__:
+            _tag_levels = set(_constants.TAG_STYLES.keys())
+            _known_levels = {lvl.upper() for lvl in _constants.LEVEL_ORDER}
+            if not _tag_levels <= _known_levels:
+                _msg = "TAG_STYLES contains unknown levels"
+                raise AssertionError(_msg)
 
         # Register custom levels with validation
         # addLevelName() also sets logging.TEST, logging.TRACE, etc. attributes
-        cls.addLevelName(TEST_LEVEL, "TEST")
-        cls.addLevelName(TRACE_LEVEL, "TRACE")
-        cls.addLevelName(SILENT_LEVEL, "SILENT")
+        cls.addLevelName(_constants.TEST_LEVEL, "TEST")
+        cls.addLevelName(_constants.TRACE_LEVEL, "TRACE")
+        cls.addLevelName(_constants.DETAIL_LEVEL, "DETAIL")
+        cls.addLevelName(_constants.MINIMAL_LEVEL, "MINIMAL")
+        cls.addLevelName(_constants.SILENT_LEVEL, "SILENT")
 
         return True
 
-    def determine_log_level(
+    def determineLogLevel(
         self,
         *,
         args: argparse.Namespace | None = None,
         root_log_level: str | None = None,
     ) -> str:
         """Resolve log level from CLI → env → root config → default."""
+        _registry = ApatheticLogging_Internal_RegistryData
+        _constants = ApatheticLogging_Internal_Constants
         args_level = getattr(args, "log_level", None)
         if args_level is not None:
             # cast_hint would cause circular dependency
             return cast("str", args_level).upper()
 
         # Check registered environment variables, or fall back to "LOG_LEVEL"
+        # Access registry via namespace class MRO to ensure correct resolution
+        # in both installed and stitched builds
+        namespace_module = sys.modules.get("apathetic_logging")
+        if namespace_module is not None:
+            namespace_class = getattr(namespace_module, "apathetic_logging", None)
+            if namespace_class is not None:
+                # Use namespace class MRO to access registry
+                # (handles shadowed attributes correctly)
+                registered_env_vars = getattr(
+                    namespace_class,
+                    "registered_internal_log_level_env_vars",
+                    None,
+                )
+                registered_default = getattr(
+                    namespace_class,
+                    "registered_internal_default_log_level",
+                    None,
+                )
+            else:
+                # Fallback to direct registry access
+                registry_cls = _registry
+                registered_env_vars = (
+                    registry_cls.registered_internal_log_level_env_vars
+                )
+                registered_default = registry_cls.registered_internal_default_log_level
+        else:
+            # Fallback to direct registry access
+            registered_env_vars = _registry.registered_internal_log_level_env_vars
+            registered_default = _registry.registered_internal_default_log_level
+
         env_vars_to_check = (
-            _registered_log_level_env_vars or DEFAULT_APATHETIC_LOG_LEVEL_ENV_VARS
+            registered_env_vars or _constants.DEFAULT_APATHETIC_LOG_LEVEL_ENV_VARS
         )
         for env_var in env_vars_to_check:
             env_log_level = os.getenv(env_var)
@@ -423,62 +1837,191 @@ class ApatheticCLILogger(logging.Logger):
             return root_log_level.upper()
 
         # Use registered default, or fall back to module default
-        default_level = _registered_default_log_level or DEFAULT_APATHETIC_LOG_LEVEL
+        default_level: str = (
+            registered_default or _constants.DEFAULT_APATHETIC_LOG_LEVEL
+        )
         return default_level.upper()
 
     @property
-    def level_name(self) -> str:
-        """Return the current effective level name
-        (see also: logging.getLevelName)."""
-        return logging.getLevelName(self.getEffectiveLevel())
+    def levelName(self) -> str:
+        """Return the explicit level name set on this logger.
 
-    def error_if_not_debug(self, msg: str, *args: Any, **kwargs: Any) -> None:
+        This property returns the name of the level explicitly set on this logger
+        (via self.level). For the effective level name (what's actually used,
+        considering inheritance), use effectiveLevelName instead.
+
+        See also: logging.getLevelName, effectiveLevelName
+        """
+        return self.getLevelName()
+
+    @property
+    def effectiveLevel(self) -> int:
+        """Return the effective level (what's actually used).
+
+        This property returns the effective logging level for this logger,
+        considering inheritance from parent loggers. This is the preferred
+        way to get the effective level. Also available via getEffectiveLevel()
+        for stdlib compatibility.
+
+        See also: logging.Logger.getEffectiveLevel, effectiveLevelName
+        """
+        return self.getEffectiveLevel()
+
+    @property
+    def effectiveLevelName(self) -> str:
+        """Return the effective level name (what's actually used).
+
+        This property returns the name of the effective logging level for this
+        logger, considering inheritance from parent loggers. This is the
+        preferred way to get the effective level name. Also available via
+        getEffectiveLevelName() for consistency.
+
+        See also: logging.getLevelName, effectiveLevel
+        """
+        return self.getEffectiveLevelName()
+
+    def getLevel(self) -> int:
+        """Return the explicit level set on this logger.
+
+        This method returns the level explicitly set on this logger (via
+        self.level). For the effective level (what's actually used, considering
+        inheritance), use getEffectiveLevel() or the effectiveLevel property.
+
+        Returns:
+            The explicit level value (int) set on this logger.
+
+        See also: level property, getEffectiveLevel
+        """
+        return self.level
+
+    def getLevelName(self) -> str:
+        """Return the explicit level name set on this logger.
+
+        This method returns the name of the level explicitly set on this logger
+        (via self.level). For the effective level name (what's actually used,
+        considering inheritance), use getEffectiveLevelName() or the
+        effectiveLevelName property.
+
+        Returns:
+            The explicit level name (str) set on this logger.
+
+        See also: levelName property, getEffectiveLevelName
+        """
+        return ApatheticLogging_Internal_LoggingUtils.getLevelNameStr(self.level)
+
+    def getEffectiveLevelName(self) -> str:
+        """Return the effective level name (what's actually used).
+
+        This method returns the name of the effective logging level for this
+        logger, considering inheritance from parent loggers. Prefer the
+        effectiveLevelName property for convenience, or use this method for
+        consistency with getEffectiveLevel().
+
+        Returns:
+            The effective level name (str) for this logger.
+
+        See also: effectiveLevelName property, getEffectiveLevel
+        """
+        return ApatheticLogging_Internal_LoggingUtils.getLevelNameStr(
+            self.getEffectiveLevel()
+        )
+
+    def errorIfNotDebug(self, msg: str, *args: Any, **kwargs: Any) -> None:
         """Logs an exception with the real traceback starting from the caller.
         Only shows full traceback if debug/trace is enabled."""
         exc_info = kwargs.pop("exc_info", True)
-        stacklevel = kwargs.pop("stacklevel", 2)  # skip helper frame
+        stacklevel = kwargs.pop("stacklevel", self.DEFAULT_STACKLEVEL)
         if self.isEnabledFor(logging.DEBUG):
-            self.exception(msg, *args, exc_info=exc_info, stacklevel=stacklevel)
+            self.exception(
+                msg, *args, exc_info=exc_info, stacklevel=stacklevel, **kwargs
+            )
         else:
-            self.error(msg, *args)
+            self.error(msg, *args, **kwargs)
 
-    def critical_if_not_debug(self, msg: str, *args: Any, **kwargs: Any) -> None:
+    def criticalIfNotDebug(self, msg: str, *args: Any, **kwargs: Any) -> None:
         """Logs an exception with the real traceback starting from the caller.
         Only shows full traceback if debug/trace is enabled."""
         exc_info = kwargs.pop("exc_info", True)
-        stacklevel = kwargs.pop("stacklevel", 2)  # skip helper frame
+        stacklevel = kwargs.pop("stacklevel", self.DEFAULT_STACKLEVEL)
         if self.isEnabledFor(logging.DEBUG):
-            self.exception(msg, *args, exc_info=exc_info, stacklevel=stacklevel)
+            self.exception(
+                msg, *args, exc_info=exc_info, stacklevel=stacklevel, **kwargs
+            )
         else:
-            self.critical(msg, *args)
+            self.critical(msg, *args, **kwargs)
 
     def colorize(
         self, text: str, color: str, *, enable_color: bool | None = None
     ) -> str:
+        """Apply ANSI color codes to text.
+
+        Defaults to using the instance's enable_color setting.
+
+        Args:
+            text: Text to colorize
+            color: ANSI color code
+            enable_color: Override color setting, or None to use instance default
+
+        Returns:
+            Colorized text if enabled, otherwise original text
+        """
+        _constants = ApatheticLogging_Internal_Constants
         if enable_color is None:
             enable_color = self.enable_color
-        return f"{color}{text}{RESET}" if enable_color else text
+        return f"{color}{text}{_constants.ANSIColors.RESET}" if enable_color else text
 
     def trace(self, msg: str, *args: Any, **kwargs: Any) -> None:
-        if self.isEnabledFor(TRACE_LEVEL):
-            self._log(TRACE_LEVEL, msg, args, **kwargs)
+        """Log a trace-level message (more verbose than DEBUG)."""
+        _constants = ApatheticLogging_Internal_Constants
+        if self.isEnabledFor(_constants.TRACE_LEVEL):
+            self._log(_constants.TRACE_LEVEL, msg, args, **kwargs)
+
+    def detail(self, msg: str, *args: Any, **kwargs: Any) -> None:
+        """Log a detail-level message (more detailed than INFO)."""
+        _constants = ApatheticLogging_Internal_Constants
+        if self.isEnabledFor(_constants.DETAIL_LEVEL):
+            self._log(
+                _constants.DETAIL_LEVEL,
+                msg,
+                args,
+                **kwargs,
+            )
+
+    def minimal(self, msg: str, *args: Any, **kwargs: Any) -> None:
+        """Log a minimal-level message (less detailed than INFO)."""
+        _constants = ApatheticLogging_Internal_Constants
+        if self.isEnabledFor(_constants.MINIMAL_LEVEL):
+            self._log(
+                _constants.MINIMAL_LEVEL,
+                msg,
+                args,
+                **kwargs,
+            )
 
     def test(self, msg: str, *args: Any, **kwargs: Any) -> None:
         """Log a test-level message (most verbose, bypasses capture)."""
-        if self.isEnabledFor(TEST_LEVEL):
-            self._log(TEST_LEVEL, msg, args, **kwargs)
+        _constants = ApatheticLogging_Internal_Constants
+        if self.isEnabledFor(_constants.TEST_LEVEL):
+            self._log(_constants.TEST_LEVEL, msg, args, **kwargs)
 
-    def resolve_level_name(self, level_name: str) -> int | None:
-        """logging.getLevelNamesMapping() is only introduced in 3.11"""
-        return getattr(logging, level_name.upper(), None)
+    def logDynamic(self, level: str | int, msg: str, *args: Any, **kwargs: Any) -> None:
+        """Log a message with a dynamically provided log level
+           (unlike .info(), .error(), etc.).
 
-    def log_dynamic(
-        self, level: str | int, msg: str, *args: Any, **kwargs: Any
-    ) -> None:
+        Useful when you have a log level (string or numeric) and don't want to resolve
+        either the string to int, or the int to a log method.
+
+        Args:
+            level: Log level as string name or integer
+            msg: Message format string
+            *args: Arguments for message formatting
+            **kwargs: Additional keyword arguments
+        """
         # Resolve level
         if isinstance(level, str):
-            level_no = self.resolve_level_name(level)
-            if not isinstance(level_no, int):
+            try:
+                level_no = ApatheticLogging_Internal_LoggingUtils.getLevelNumber(level)
+            except ValueError:
                 self.error("Unknown log level: %r", level)
                 return
         elif isinstance(level, int):  # pyright: ignore[reportUnnecessaryIsInstance]
@@ -490,7 +2033,7 @@ class ApatheticCLILogger(logging.Logger):
         self._log(level_no, msg, args, **kwargs)
 
     @contextmanager
-    def use_level(
+    def useLevel(
         self, level: str | int, *, minimum: bool = False
     ) -> Generator[None, None, None]:
         """Use a context to temporarily log with a different log-level.
@@ -498,19 +2041,23 @@ class ApatheticCLILogger(logging.Logger):
         Args:
             level: Log level to use (string name or numeric value)
             minimum: If True, only set the level if it's more verbose (lower
-                numeric value) than the current level. This prevents downgrading
-                from a more verbose level (e.g., TRACE) to a less verbose one
-                (e.g., DEBUG). Defaults to False.
+                numeric value) than the current effective level. This prevents
+                downgrading from a more verbose level (e.g., TRACE) to a less
+                verbose one (e.g., DEBUG). Compares against effective level
+                (considering parent inheritance), matching setLevel(minimum=True)
+                behavior. Defaults to False.
 
         Yields:
             None: Context manager yields control to the with block
         """
+        # Save explicit level for restoration (not effective level)
         prev_level = self.level
 
         # Resolve level
         if isinstance(level, str):
-            level_no = self.resolve_level_name(level)
-            if not isinstance(level_no, int):
+            try:
+                level_no = ApatheticLogging_Internal_LoggingUtils.getLevelNumber(level)
+            except ValueError:
                 self.error("Unknown log level: %r", level)
                 # Yield control anyway so the 'with' block doesn't explode
                 yield
@@ -524,8 +2071,12 @@ class ApatheticCLILogger(logging.Logger):
 
         # Apply new level (only if more verbose when minimum=True)
         if minimum:
-            # Only set if requested level is more verbose (lower number) than current
-            if level_no < prev_level:
+            # Compare against effective level (not explicit level) to match
+            # setLevel(minimum=True) behavior. This ensures consistent behavior
+            # when logger inherits level from parent.
+            current_effective_level = self.getEffectiveLevel()
+            # Lower number = more verbose, so only set if new level is more verbose
+            if level_no < current_effective_level:
                 self.setLevel(level_no)
             # Otherwise keep current level (don't downgrade)
         else:
@@ -537,253 +2088,1985 @@ class ApatheticCLILogger(logging.Logger):
             self.setLevel(prev_level)
 
 
-# --- Tag formatter ---------------------------------------------------------
+# === apathetic_logging.logger_namespace ===
+# src/apathetic_logging/logger_namespace.py
+"""Logger namespace mixin that provides the Logger nested class.
+
+See https://docs.python.org/3/library/logging.html#logging.Logger for the
+complete list of standard library Logger methods.
+
+Docstrings are adapted from the standard library logging.Logger documentation
+licensed under the Python Software Foundation License Version 2.
+"""
 
 
-class TagFormatter(logging.Formatter):
-    def format(self: TagFormatter, record: logging.LogRecord) -> str:
-        tag_color, tag_text = TAG_STYLES.get(record.levelname, ("", ""))
-        msg = super().format(record)
-        if tag_text:
-            if getattr(record, "enable_color", False) and tag_color:
-                prefix = f"{tag_color}{tag_text}{RESET}"
-            else:
-                prefix = tag_text
-            return f"{prefix} {msg}"
-        return msg
+class ApatheticLogging_Internal_Logger:  # noqa: N801  # pyright: ignore[reportUnusedClass]
+    """Mixin class that provides the Logger nested class.
 
+    This class contains the Logger implementation as a nested class, using
+    the core Logger implementation.
 
-# --- DualStreamHandler ---------------------------------------------------------
-
-
-class DualStreamHandler(logging.StreamHandler):  # type: ignore[type-arg]
-    """Send info to stdout, everything else to stderr.
-
-    TRACE, DEBUG, WARNING, ERROR, and CRITICAL all go to stderr.
-    Only INFO goes to stdout.
-
-    When logger level is TEST, TRACE/DEBUG/TEST messages bypass capture
-    by writing to sys.__stderr__ instead of sys.stderr.
-    This allows debugging tests without breaking output assertions while
-    still being capturable by subprocess.run(capture_output=True).
+    When mixed into apathetic_logging, it provides apathetic_logging.Logger.
     """
 
-    enable_color: bool = False
+    class Logger(
+        ApatheticLogging_Internal_LoggerCore,
+    ):
+        """Logger for all Apathetic tools.
 
-    def __init__(self) -> None:
-        # default to stdout, overridden per record in emit()
-        super().__init__()  # pyright: ignore[reportUnknownMemberType]
+        This Logger class is composed from:
+        - Core Logger implementation
+          (ApatheticLogging_Internal_LoggerCore, which inherits from logging.Logger)
+        """
 
-    def emit(self, record: logging.LogRecord) -> None:
-        level = record.levelno
 
-        # Check if logger is in TEST mode (bypass capture for verbose levels)
-        logger_name = record.name
-        logger_instance = logging.getLogger(logger_name)
-        is_test_mode = (
-            isinstance(logger_instance, ApatheticCLILogger)
-            and logger_instance.level == TEST_LEVEL
+# === apathetic_logging.get_logger ===
+# src/apathetic_logging/get_logger.py
+"""GetLogger functionality for Apathetic Logging.
+
+Docstrings are adapted from the standard library logging module documentation
+licensed under the Python Software Foundation License Version 2.
+"""
+
+
+class ApatheticLogging_Internal_GetLogger:  # noqa: N801  # pyright: ignore[reportUnusedClass]
+    """Mixin class that provides the getLogger static method.
+
+    This class contains the getLogger implementation as a static method.
+    When mixed into apathetic_logging, it provides apathetic_logging.getLogger.
+    """
+
+    _LoggerType = TypeVar("_LoggerType", bound=logging.Logger)
+
+    @staticmethod
+    def _setLoggerClassTemporarily(
+        klass: type[ApatheticLogging_Internal_GetLogger._LoggerType],
+        name: str,
+    ) -> ApatheticLogging_Internal_GetLogger._LoggerType:
+        """Temporarily set the logger class, get/create a logger, then restore.
+
+        This is an internal helper function used by getLoggerOfType to create
+        a logger of a specific type when one doesn't already exist. It temporarily
+        sets the logger class to the desired type, gets or creates the logger,
+        then restores the original logger class.
+
+        This function is mostly for internal use by the library. If you need
+        a logger of a specific type, use getLoggerOfType instead, which provides
+        all the conveniences (name inference, registry checking, etc.).
+
+        Args:
+            klass (logger class): The desired logger class type.
+            name: The name of the logger to get.
+
+        Returns:
+            A logger instance of the specified type.
+        """
+        # stdlib unwrapped
+        original_class = logging.getLoggerClass()
+        logging.setLoggerClass(klass)
+        # avoid circular dependency by using logging.getLogger directly
+        logger = logging.getLogger(name)
+        logging.setLoggerClass(original_class)
+        typed_logger = cast("ApatheticLogging_Internal_GetLogger._LoggerType", logger)
+        return typed_logger
+
+    @staticmethod
+    def _getOrCreateLoggerOfType(
+        register_name: str,
+        class_type: type[ApatheticLogging_Internal_GetLogger._LoggerType],
+        *args: Any,
+        **kwargs: Any,
+    ) -> ApatheticLogging_Internal_GetLogger._LoggerType:
+        """Get or create a logger of the specified type.
+
+        Checks if a logger with the given name exists. If it exists but is not
+        of the correct type, removes it and creates a new one. If it doesn't
+        exist, creates a new logger of the specified type.
+
+        Args:
+            register_name: The name of the logger to get or create.
+            class_type: The logger class type to use.
+            *args: Additional positional arguments to pass to logging.getLogger.
+            **kwargs: Additional keyword arguments to pass to logging.getLogger.
+
+        Returns:
+            A logger instance of the specified type.
+        """
+        _logging_utils = ApatheticLogging_Internal_LoggingUtils
+
+        logger: logging.Logger | None = None
+        registered = _logging_utils.hasLogger(register_name)
+        if registered:
+            logger = logging.getLogger(register_name, *args, **kwargs)
+            if not isinstance(logger, class_type):
+                _logging_utils.removeLogger(register_name)
+                registered = False
+        if not registered:  # may have changed above
+            logger = ApatheticLogging_Internal_GetLogger._setLoggerClassTemporarily(
+                class_type, register_name
+            )
+        typed_logger = cast("ApatheticLogging_Internal_GetLogger._LoggerType", logger)
+        return typed_logger
+
+    @staticmethod
+    def _applyPropagateSetting(logger: logging.Logger) -> None:
+        """Apply propagate setting to a logger from registry or default.
+
+        Determines the propagate value from the registry (if set) or falls back
+        to the default from constants, then applies it to the logger.
+
+        Args:
+            logger: The logger instance to apply the propagate setting to.
+        """
+        _constants = ApatheticLogging_Internal_Constants
+        _registry_data = ApatheticLogging_Internal_RegistryData
+
+        if _registry_data.registered_internal_propagate is not None:
+            # Use registered value
+            logger.propagate = _registry_data.registered_internal_propagate
+        else:
+            # Use default from constants
+            logger.propagate = _constants.DEFAULT_PROPAGATE
+
+    @staticmethod
+    def getLogger(
+        name: str | None = None,
+        *args: Any,
+        level: str | int | None = None,
+        minimum: bool | None = None,
+        extend: bool | None = None,
+        **kwargs: Any,
+    ) -> ApatheticLogging_Internal_Logger.Logger:
+        """Return a logger with the specified name, creating it if necessary.
+
+        Changes:
+        - When name is None, infers the name automatically from
+          the calling module's __package__ attribute by examining the call stack
+          (using skip_frames=2 to correctly identify the caller)
+          instead of returning the root logger.
+        - When name is an empty string (""), returns the root logger
+          as usual, matching standard library behavior.
+        - Returns an apathetic_logging.Logger instance instead of
+          the standard logging.Logger.
+
+        Args:
+            name: The name of the logger to get. If None, the logger name
+                will be auto-inferred from the calling module's __package__.
+                If an empty string (""), returns the root logger.
+            *args: Additional positional arguments (for future-proofing)
+            level: Exact log level to set on the logger. Accepts both string
+                names (case-insensitive) and numeric values. If provided,
+                sets the logger's level to this value. Defaults to None.
+            minimum: If True, only set the level if it's more verbose (lower
+                numeric value) than the current level. This prevents downgrading
+                from a more verbose level (e.g., TRACE) to a less verbose one
+                (e.g., DEBUG). If None, defaults to False. Only used when
+                `level` is provided.
+            extend: If True (default), extend the logging module.
+            **kwargs: Additional keyword arguments (for future-proofing)
+
+        Returns:
+            A logger of type ApatheticLogging_Internal_Logger.Logger.
+
+        Wrapper for logging.getLogger.
+
+        https://docs.python.org/3.10/library/logging.html#logging.getLogger
+        """
+        _get_logger = ApatheticLogging_Internal_GetLogger
+        _logger = ApatheticLogging_Internal_Logger
+        skip_frames = 2
+        result = _get_logger.getLoggerOfType(
+            name,
+            _logger.Logger,
+            skip_frames,
+            *args,
+            level=level,
+            minimum=minimum,
+            extend=extend,
+            **kwargs,
+        )
+        return cast("ApatheticLogging_Internal_Logger.Logger", result)  # type: ignore[redundant-cast]
+
+    @staticmethod
+    def getLoggerOfType(
+        name: str | None,
+        class_type: type[ApatheticLogging_Internal_GetLogger._LoggerType],
+        skip_frames: int = 1,
+        *args: Any,
+        level: str | int | None = None,
+        minimum: bool | None = None,
+        extend: bool | None = True,
+        **kwargs: Any,
+    ) -> ApatheticLogging_Internal_GetLogger._LoggerType:
+        """Get a logger of the specified type, creating it if necessary.
+
+        Changes:
+        - When name is None, infers the name automatically from
+          the calling module's __package__ attribute by examining the call stack
+          (using skip_frames to correctly identify the caller)
+          instead of returning the root logger.
+        - When name is an empty string (""), returns the root logger
+          as usual, matching standard library behavior.
+        - Returns a class_type instance instead of
+          the standard logging.Logger.
+
+        Args:
+            name: The name of the logger to get. If None, the logger name
+                will be auto-inferred from the calling module's __package__.
+                If an empty string (""), returns the root logger.
+            class_type: The logger class type to use.
+            skip_frames: Number of frames to skip when inferring logger name.
+                Prefer using as a keyword argument (e.g., skip_frames=2) for clarity.
+            *args: Additional positional arguments (for future-proofing)
+            level: Exact log level to set on the logger. Accepts both string
+                names (case-insensitive) and numeric values. If provided,
+                sets the logger's level to this value. Defaults to None.
+            minimum: If True, only set the level if it's more verbose (lower
+                numeric value) than the current level. This prevents downgrading
+                from a more verbose level (e.g., TRACE) to a less verbose one
+                (e.g., DEBUG). If None, defaults to False. Only used when
+                `level` is provided.
+            extend: If True (default), extend the logging module.
+            **kwargs: Additional keyword arguments (for future-proofing)
+
+        Returns:
+            A logger instance of the specified type.
+
+        Wrapper for logging.getLogger.
+
+        https://docs.python.org/3.10/library/logging.html#logging.getLogger
+        """
+        _logging_utils = ApatheticLogging_Internal_LoggingUtils
+
+        # Check compatibility mode for getLogger(None) behavior
+
+        _registry_data = ApatheticLogging_Internal_RegistryData
+        compatibility_mode = (
+            _registry_data.registered_internal_compatibility_mode
+            if _registry_data.registered_internal_compatibility_mode is not None
+            else False
         )
 
-        # Determine target stream
-        if level >= logging.WARNING:
-            # Warnings and errors always go to stderr (normal behavior)
-            # This ensures they still break tests as expected
-            # Even in TEST mode, warnings/errors use normal stderr
-            self.stream = sys.stderr
-        elif level <= logging.DEBUG:
-            # TEST/TRACE/DEBUG in TEST mode: use bypass stream
-            # Use __stderr__ so they bypass pytest capsys but are still
-            # capturable by subprocess.run(capture_output=True)
-            if is_test_mode:
-                self.stream = sys.__stderr__
-            else:
-                self.stream = sys.stderr
+        # In compatibility mode, getLogger(None) returns root logger (stdlib behavior)
+        if name is None and compatibility_mode:
+            register_name: str = ""
         else:
-            # INFO goes to stdout (normal program output)
-            self.stream = sys.stdout
-
-        # used by TagFormatter
-        record.enable_color = getattr(self, "enable_color", False)
-
-        super().emit(record)
-
-
-# --- Logger registry ---------------------------------------------------------
-
-
-# Registry to store the registered logger name
-# The logging module itself acts as the registry via logging.getLogger()
-_registered_logger_name: str | None = None
-
-
-def _extract_top_level_package(package_name: str | None) -> str | None:
-    """Extract the top-level package name from a full package path.
-
-    Args:
-        package_name: Full package name (e.g., "serger.logs")
-
-    Returns:
-        Top-level package name (e.g., "serger") or None if package_name is None
-    """
-    if package_name is None:
-        return None
-    if "." in package_name:
-        return package_name.split(".", 1)[0]
-    return package_name
-
-
-def register_log_level_env_vars(env_vars: list[str]) -> None:
-    """Register environment variable names to check for log level.
-
-    The environment variables will be checked in order, and the first
-    non-empty value found will be used.
-
-    Args:
-        env_vars: List of environment variable names to check
-            (e.g., ["SERGER_LOG_LEVEL", "LOG_LEVEL"])
-
-    Example:
-        >>> from apathetic_logs import register_log_level_env_vars
-        >>> register_log_level_env_vars(["MYAPP_LOG_LEVEL", "LOG_LEVEL"])
-    """
-    global _registered_log_level_env_vars  # noqa: PLW0603
-    _registered_log_level_env_vars = env_vars
-    TEST_TRACE(
-        "register_log_level_env_vars() called",
-        f"env_vars={env_vars}",
-    )
-
-
-def register_default_log_level(default_level: str) -> None:
-    """Register the default log level to use when no other source is found.
-
-    Args:
-        default_level: Default log level name (e.g., "info", "warning")
-
-    Example:
-        >>> from apathetic_logs import register_default_log_level
-        >>> register_default_log_level("warning")
-    """
-    global _registered_default_log_level  # noqa: PLW0603
-    _registered_default_log_level = default_level
-    TEST_TRACE(
-        "register_default_log_level() called",
-        f"default_level={default_level}",
-    )
-
-
-def register_logger_name(logger_name: str | None = None) -> None:
-    """Register a logger name for use by get_logger().
-
-    This allows applications to specify which logger name to use.
-    The actual logger instance is stored by Python's logging module
-    via logging.getLogger(), so we only need to store the name.
-
-    If logger_name is not provided, the top-level package is automatically
-    extracted from this module's __package__ attribute. For example, if
-    this module is in "serger.logs", it will default to "serger".
-
-    Args:
-        logger_name: The name of the logger to retrieve (e.g., "serger").
-            If None, extracts the top-level package from __package__.
-
-    Example:
-        >>> # Explicit registration
-        >>> from serger.meta import PROGRAM_PACKAGE
-        >>> from serger.logs import register_logger_name
-        >>> register_logger_name(PROGRAM_PACKAGE)
-
-        >>> # Auto-infer from __package__
-        >>> register_logger_name()  # Uses top-level package from __package__
-    """
-    global _registered_logger_name  # noqa: PLW0603
-
-    auto_inferred = False
-    if logger_name is None:
-        # Extract top-level package from this module's __package__
-        package = globals().get("__package__")
-        if package:
-            logger_name = _extract_top_level_package(package)
-            auto_inferred = True
-        if logger_name is None:
-            _msg = (
-                "Cannot auto-infer logger name: __package__ is not set. "
-                "Please call register_logger_name() with an explicit logger name."
+            # Resolve logger name (with inference if needed)
+            # Note: Empty string ("") is a special case - getDefaultLoggerName
+            # returns it as-is (root logger, matching stdlib behavior). This is
+            # handled by the
+            # early return in getDefaultLoggerName when logger_name is not None.
+            # skip_frames+1 because: getLoggerOfType -> getDefaultLoggerName -> caller
+            # check_registry=True because getLogger() should use a previously registered
+            # name if available, which is the expected behavior for "get" operations.
+            # raise_on_error=True because getLogger() requires a logger name.
+            # infer=True and register=True - getLogger() infers and stores (matches old
+            # resolveLoggerName behavior where inferred names were automatically stored)
+            register_name_raw = _logging_utils.getDefaultLoggerName(
+                name,
+                check_registry=True,
+                skip_frames=skip_frames + 1,
+                raise_on_error=True,
+                infer=True,
+                register=True,
             )
-            raise RuntimeError(_msg)
+            # With raise_on_error=True, register_name is guaranteed to be str, not None
+            register_name = register_name_raw  # type: ignore[assignment]
 
-    _registered_logger_name = logger_name
-    TEST_TRACE(
-        "register_logger_name() called",
-        f"name={logger_name}",
-        f"auto_inferred={auto_inferred}",
-    )
+        # extend logging module
+        if extend and hasattr(class_type, "extendLoggingModule"):
+            class_type.extendLoggingModule()  # type: ignore[attr-defined]
+
+        # Get or create logger of the correct type
+        logger = ApatheticLogging_Internal_GetLogger._getOrCreateLoggerOfType(
+            register_name, class_type, *args, **kwargs
+        )
+
+        # Apply log level settings if provided
+        if level is not None:
+            logger.setLevel(level, minimum=minimum)  # type: ignore[call-arg]
+
+        # Apply propagate setting from registry or default
+        ApatheticLogging_Internal_GetLogger._applyPropagateSetting(logger)
+
+        return logger
 
 
-def get_logger() -> ApatheticCLILogger:
-    """Return the registered logger instance.
+# === apathetic_logging.logging_std_camel ===
+# src/apathetic_logging/logging_std_camel.py
+"""Camel case convenience functions for standard logging module.
 
-    Uses Python's built-in logging registry (logging.getLogger()) to retrieve
-    the logger. If no logger name has been registered, attempts to auto-infer
-    the logger name from the calling module's top-level package.
+Docstrings are adapted from the standard library logging module documentation
+licensed under the Python Software Foundation License Version 2.
+"""
+
+
+class ApatheticLogging_Internal_StdCamelCase:  # noqa: N801  # pyright: ignore[reportUnusedClass]
+    """Mixin class that provides camelCase convenience functions for logging.*.
+
+    This class contains camelCase wrapper functions for standard library
+    `logging.*` functions that use camelCase naming. These wrappers provide
+    direct compatibility with the standard logging module interface while
+    maintaining full compatibility with the underlying logging module functions.
+
+    When mixed into apathetic_logging, it provides camelCase functions
+    that match the standard logging module functions (e.g., `basicConfig`,
+    `addLevelName`, `setLoggerClass`, `getLogger`).
+    """
+
+    # --- Configuration Functions ---
+
+    @staticmethod
+    def basicConfig(*args: Any, **kwargs: Any) -> None:
+        """Do basic configuration for the logging system.
+
+        This function does nothing if the root logger already has handlers
+        configured, unless the keyword argument *force* is set to ``True``.
+        It is a convenience method intended for use by simple scripts
+        to do one-shot configuration of the logging package.
+
+        The default behaviour is to create a StreamHandler which writes to
+        sys.stderr, set a formatter using the BASIC_FORMAT format string, and
+        add the handler to the root logger.
+
+        A number of optional keyword arguments may be specified, which can alter
+        the default behaviour.
+
+        Wrapper for logging.basicConfig with camelCase naming.
+
+        https://docs.python.org/3.10/library/logging.html#logging.basicConfig
+        """
+        logging.basicConfig(*args, **kwargs)
+
+    @staticmethod
+    def captureWarnings(
+        capture: bool,  # noqa: FBT001
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
+        """Redirect warnings to the logging package.
+
+        If capture is true, redirect all warnings to the logging package.
+        If capture is False, ensure that warnings are not redirected to logging
+        but to their original destinations.
+
+        Wrapper for logging.captureWarnings with camelCase naming.
+
+        https://docs.python.org/3.10/library/logging.html#logging.captureWarnings
+        """
+        logging.captureWarnings(capture, *args, **kwargs)
+
+    @staticmethod
+    def shutdown(*args: Any, **kwargs: Any) -> None:
+        """Perform any cleanup actions in the logging system.
+
+        Perform any cleanup actions in the logging system (e.g. flushing
+        buffers). Should be called at application exit.
+
+        Wrapper for logging.shutdown with camelCase naming.
+
+        https://docs.python.org/3.10/library/logging.html#logging.shutdown
+        """
+        logging.shutdown(*args, **kwargs)
+
+    # --- Level Management Functions ---
+
+    @staticmethod
+    def addLevelName(level: int, level_name: str, *args: Any, **kwargs: Any) -> None:
+        """Associate a level name with a numeric level.
+
+        Associate 'level_name' with 'level'. This is used when converting
+        levels to text during message formatting.
+
+        Wrapper for logging.addLevelName with camelCase naming.
+
+        https://docs.python.org/3.10/library/logging.html#logging.addLevelName
+        """
+        logging.addLevelName(level, level_name, *args, **kwargs)
+
+    @staticmethod
+    def getLevelName(level: int, *args: Any, **kwargs: Any) -> str | int:
+        """Return the textual or numeric representation of a logging level.
+
+        If the level is one of the predefined levels (CRITICAL, ERROR, WARNING,
+        INFO, DEBUG) then you get the corresponding string. If you have
+        associated levels with names using addLevelName then the name you have
+        associated with 'level' is returned.
+
+        If a numeric value corresponding to one of the defined levels is passed
+        in, the corresponding string representation is returned.
+
+        If a string representation of the level is passed in, the corresponding
+        numeric value is returned.
+
+        If no matching numeric or string value is passed in, the string
+        'Level %s' % level is returned.
+
+        Wrapper for logging.getLevelName with camelCase naming.
+
+        https://docs.python.org/3.10/library/logging.html#logging.getLevelName
+        """
+        return logging.getLevelName(level, *args, **kwargs)
+
+    @staticmethod
+    def getLevelNamesMapping(*args: Any, **kwargs: Any) -> dict[int, str]:
+        """Return a mapping of all level names to their numeric values.
+
+        **Requires Python 3.11+**
+
+        Wrapper for logging.getLevelNamesMapping with camelCase naming.
+
+        https://docs.python.org/3.11/library/logging.html#logging.getLevelNamesMapping
+        """
+        _logging_utils = ApatheticLogging_Internal_LoggingUtils
+        _logging_utils.checkPythonVersionRequirement((3, 11), "getLevelNamesMapping")
+        return logging.getLevelNamesMapping(*args, **kwargs)  # type: ignore[attr-defined,no-any-return]
+
+    @staticmethod
+    def disable(level: int = 50, *args: Any, **kwargs: Any) -> None:
+        """Disable all logging calls of severity 'level' and below.
+
+        Wrapper for logging.disable with camelCase naming.
+
+        https://docs.python.org/3.10/library/logging.html#logging.disable
+        """
+        logging.disable(level, *args, **kwargs)
+
+    # --- Logger Management Functions ---
+
+    @staticmethod
+    def getLogger(
+        name: str | None = None, *_args: Any, **_kwargs: Any
+    ) -> logging.Logger:
+        """Return a logger with the specified name, creating it if necessary.
+
+        If no name is specified, return the root logger.
+
+        Returns an logging.Logger instance.
+
+        Wrapper for logging.getLogger with camelCase naming.
+
+        https://docs.python.org/3.10/library/logging.html#logging.getLogger
+        """
+        return logging.getLogger(name)
+
+    @staticmethod
+    def getLoggerClass(*args: Any, **kwargs: Any) -> type[logging.Logger]:
+        """Return the class to be used when instantiating a logger.
+
+        Wrapper for logging.getLoggerClass with camelCase naming.
+
+        https://docs.python.org/3.10/library/logging.html#logging.getLoggerClass
+        """
+        return logging.getLoggerClass(*args, **kwargs)
+
+    @staticmethod
+    def setLoggerClass(klass: type[logging.Logger], *args: Any, **kwargs: Any) -> None:
+        """Set the class to be used when instantiating a logger.
+
+        The class should define __init__() such that only a name argument is
+        required, and the __init__() should call Logger.__init__().
+
+        Args:
+            klass (logger class): The logger class to use.
+            *args: Additional positional arguments (for future-proofing).
+            **kwargs: Additional keyword arguments (for future-proofing).
+
+        Wrapper for logging.setLoggerClass with camelCase naming.
+
+        https://docs.python.org/3.10/library/logging.html#logging.setLoggerClass
+        """
+        logging.setLoggerClass(klass, *args, **kwargs)
+
+    # --- Handler Management Functions ---
+
+    @staticmethod
+    def getHandlerByName(
+        name: str, *args: Any, **kwargs: Any
+    ) -> logging.Handler | None:
+        """Get a handler with the specified name, or None if there isn't one.
+
+        **Requires Python 3.12+**
+
+        Wrapper for logging.getHandlerByName with camelCase naming.
+
+        https://docs.python.org/3.12/library/logging.html#logging.getHandlerByName
+        """
+        _logging_utils = ApatheticLogging_Internal_LoggingUtils
+        _logging_utils.checkPythonVersionRequirement((3, 12), "getHandlerByName")
+        return logging.getHandlerByName(name, *args, **kwargs)  # type: ignore[attr-defined,no-any-return]
+
+    @staticmethod
+    def getHandlerNames(*args: Any, **kwargs: Any) -> list[str]:
+        """Return all known handler names as an immutable set.
+
+        **Requires Python 3.12+**
+
+        Wrapper for logging.getHandlerNames with camelCase naming.
+
+        https://docs.python.org/3.12/library/logging.html#logging.getHandlerNames
+        """
+        _logging_utils = ApatheticLogging_Internal_LoggingUtils
+        _logging_utils.checkPythonVersionRequirement((3, 12), "getHandlerNames")
+        return logging.getHandlerNames(*args, **kwargs)  # type: ignore[attr-defined,no-any-return]
+
+    # --- Factory Functions ---
+
+    @staticmethod
+    def getLogRecordFactory(
+        *args: Any, **kwargs: Any
+    ) -> Callable[..., logging.LogRecord]:
+        """Return the factory to be used when instantiating a log record.
+
+        Wrapper for logging.getLogRecordFactory with camelCase naming.
+
+        https://docs.python.org/3.10/library/logging.html#logging.getLogRecordFactory
+        """
+        return logging.getLogRecordFactory(*args, **kwargs)
+
+    @staticmethod
+    def setLogRecordFactory(
+        factory: Callable[..., logging.LogRecord], *args: Any, **kwargs: Any
+    ) -> None:
+        """Set the factory to be used when instantiating a log record.
+
+        :param factory: A callable which will be called to instantiate
+        a log record.
+
+        Wrapper for logging.setLogRecordFactory with camelCase naming.
+
+        https://docs.python.org/3.10/library/logging.html#logging.setLogRecordFactory
+        """
+        logging.setLogRecordFactory(factory, *args, **kwargs)
+
+    @staticmethod
+    def makeLogRecord(
+        dict: dict[str, Any],  # noqa: A002  # Required to match stdlib logging.makeLogRecord signature
+        *args: Any,
+        **kwargs: Any,
+    ) -> logging.LogRecord:
+        """Make a LogRecord whose attributes are defined by a dictionary.
+
+        This function is useful for converting a logging event received over
+        a socket connection (which is sent as a dictionary) into a LogRecord
+        instance.
+
+        Wrapper for logging.makeLogRecord with camelCase naming.
+
+        https://docs.python.org/3.10/library/logging.html#logging.makeLogRecord
+        """
+        return logging.makeLogRecord(dict, *args, **kwargs)
+
+    # --- Logging Functions ---
+
+    @staticmethod
+    def critical(msg: str, *args: Any, **kwargs: Any) -> None:
+        """Log a message with severity 'CRITICAL' on the root logger.
+
+        If the logger has no handlers, call basicConfig() to add a console
+        handler with a pre-defined format.
+
+        Wrapper for logging.critical with camelCase naming.
+
+        https://docs.python.org/3.10/library/logging.html#logging.critical
+        """
+        logging.critical(msg, *args, **kwargs)  # noqa: LOG015
+
+    @staticmethod
+    def debug(msg: str, *args: Any, **kwargs: Any) -> None:
+        """Log a message with severity 'DEBUG' on the root logger.
+
+        If the logger has no handlers, call basicConfig() to add a console
+        handler with a pre-defined format.
+
+        Wrapper for logging.debug with camelCase naming.
+
+        https://docs.python.org/3.10/library/logging.html#logging.debug
+        """
+        logging.debug(msg, *args, **kwargs)  # noqa: LOG015
+
+    @staticmethod
+    def error(msg: str, *args: Any, **kwargs: Any) -> None:
+        """Log a message with severity 'ERROR' on the root logger.
+
+        If the logger has no handlers, call basicConfig() to add a console
+        handler with a pre-defined format.
+
+        Wrapper for logging.error with camelCase naming.
+
+        https://docs.python.org/3.10/library/logging.html#logging.error
+        """
+        logging.error(msg, *args, **kwargs)  # noqa: LOG015
+
+    @staticmethod
+    def exception(msg: str, *args: Any, exc_info: bool = True, **kwargs: Any) -> None:
+        """Log a message with severity 'ERROR' on the root logger, with exception info.
+
+        If the logger has no handlers, basicConfig() is called to add a console
+        handler with a pre-defined format.
+
+        Wrapper for logging.exception with camelCase naming.
+
+        https://docs.python.org/3.10/library/logging.html#logging.exception
+        """
+        logging.exception(msg, *args, exc_info=exc_info, **kwargs)  # noqa: LOG015
+
+    @staticmethod
+    def fatal(msg: str, *args: Any, **kwargs: Any) -> None:
+        """Log a message with severity 'CRITICAL' on the root logger.
+
+        Don't use this function, use critical() instead.
+
+        Wrapper for logging.fatal with camelCase naming.
+
+        https://docs.python.org/3.10/library/logging.html#logging.fatal
+        """
+        logging.fatal(msg, *args, **kwargs)
+
+    @staticmethod
+    def info(msg: str, *args: Any, **kwargs: Any) -> None:
+        """Log a message with severity 'INFO' on the root logger.
+
+        If the logger has no handlers, call basicConfig() to add a console
+        handler with a pre-defined format.
+
+        Wrapper for logging.info with camelCase naming.
+
+        https://docs.python.org/3.10/library/logging.html#logging.info
+        """
+        logging.info(msg, *args, **kwargs)  # noqa: LOG015
+
+    @staticmethod
+    def log(level: int, msg: str, *args: Any, **kwargs: Any) -> None:
+        """Log 'msg % args' with the integer severity 'level' on the root logger.
+
+        If the logger has no handlers, call basicConfig() to add a console
+        handler with a pre-defined format.
+
+        Wrapper for logging.log with camelCase naming.
+
+        https://docs.python.org/3.10/library/logging.html#logging.log
+        """
+        logging.log(level, msg, *args, **kwargs)  # noqa: LOG015
+
+    @staticmethod
+    def warn(msg: str, *args: Any, **kwargs: Any) -> None:
+        """Log a message with severity 'WARNING' on the root logger.
+
+        If the logger has no handlers, call basicConfig() to add a console
+        handler with a pre-defined format.
+
+        Wrapper for logging.warn with camelCase naming.
+
+        https://docs.python.org/3.10/library/logging.html#logging.warn
+        """
+        logging.warning(msg, *args, **kwargs)  # noqa: LOG015
+
+    @staticmethod
+    def warning(msg: str, *args: Any, **kwargs: Any) -> None:
+        """Log a message with severity 'WARNING' on the root logger.
+
+        If the logger has no handlers, call basicConfig() to add a console
+        handler with a pre-defined format.
+
+        Wrapper for logging.warning with camelCase naming.
+
+        https://docs.python.org/3.10/library/logging.html#logging.warning
+        """
+        logging.warning(msg, *args, **kwargs)  # noqa: LOG015
+
+    # --- Custom Level Functions ---
+
+    @staticmethod
+    def trace(msg: str, *args: Any, **kwargs: Any) -> None:
+        """Log a message with severity 'TRACE' on the root logger.
+
+        TRACE is more verbose than DEBUG. If the logger has no handlers,
+        call basicConfig() to add a console handler with a pre-defined format.
+
+        This function gets an apathetic_logging.Logger instance (ensuring
+        the root logger is an apathetic logger) and calls its trace() method.
+        """
+        _get_logger = ApatheticLogging_Internal_GetLogger
+        _logger = ApatheticLogging_Internal_Logger
+        _constants = ApatheticLogging_Internal_Constants
+        # Ensure logging module is extended
+        _logger.Logger.extendLoggingModule()
+        # Get root logger - it should be an apathetic logger now
+        logger = _get_logger.getLogger("", extend=True)
+        # Check if logger has trace method (it should if it's an apathetic logger)
+        if hasattr(logger, "trace"):
+            logger.trace(msg, *args, **kwargs)
+        # Fallback: if root logger is still a standard logger, use _log directly
+        # This can happen if root logger was created before extendLoggingModule
+        elif logger.isEnabledFor(_constants.TRACE_LEVEL):
+            logger._log(_constants.TRACE_LEVEL, msg, args, **kwargs)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+
+    @staticmethod
+    def detail(msg: str, *args: Any, **kwargs: Any) -> None:
+        """Log a message with severity 'DETAIL' on the root logger.
+
+        DETAIL is more detailed than INFO. If the logger has no handlers,
+        call basicConfig() to add a console handler with a pre-defined format.
+
+        This function gets an apathetic_logging.Logger instance (ensuring
+        the root logger is an apathetic logger) and calls its detail() method.
+        """
+        _get_logger = ApatheticLogging_Internal_GetLogger
+        _logger = ApatheticLogging_Internal_Logger
+        _constants = ApatheticLogging_Internal_Constants
+        # Ensure logging module is extended
+        _logger.Logger.extendLoggingModule()
+        # Get root logger - it should be an apathetic logger now
+        logger = _get_logger.getLogger("", extend=True)
+        # Check if logger has detail method (it should if it's an apathetic logger)
+        if hasattr(logger, "detail"):
+            logger.detail(msg, *args, **kwargs)
+        # Fallback: if root logger is still a standard logger, use _log directly
+        elif logger.isEnabledFor(_constants.DETAIL_LEVEL):
+            logger._log(_constants.DETAIL_LEVEL, msg, args, **kwargs)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+
+    @staticmethod
+    def minimal(msg: str, *args: Any, **kwargs: Any) -> None:
+        """Log a message with severity 'MINIMAL' on the root logger.
+
+        MINIMAL is less detailed than INFO. If the logger has no handlers,
+        call basicConfig() to add a console handler with a pre-defined format.
+
+        This function gets an apathetic_logging.Logger instance (ensuring
+        the root logger is an apathetic logger) and calls its minimal() method.
+        """
+        _get_logger = ApatheticLogging_Internal_GetLogger
+        _logger = ApatheticLogging_Internal_Logger
+        _constants = ApatheticLogging_Internal_Constants
+        # Ensure logging module is extended
+        _logger.Logger.extendLoggingModule()
+        # Get root logger - it should be an apathetic logger now
+        logger = _get_logger.getLogger("", extend=True)
+        # Check if logger has minimal method (it should if it's an apathetic logger)
+        if hasattr(logger, "minimal"):
+            logger.minimal(msg, *args, **kwargs)
+        # Fallback: if root logger is still a standard logger, use _log directly
+        elif logger.isEnabledFor(_constants.MINIMAL_LEVEL):
+            logger._log(_constants.MINIMAL_LEVEL, msg, args, **kwargs)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+
+    # --- Utility Functions ---
+
+    @staticmethod
+    def currentframe(*args: Any, **kwargs: Any) -> FrameType | None:
+        """Return the frame object for the caller's stack frame.
+
+        Wrapper for logging.currentframe with camelCase naming.
+
+        https://docs.python.org/3.10/library/logging.html#logging.currentframe
+        """
+        return logging.currentframe(*args, **kwargs)
+
+
+# === apathetic_logging.namespace ===
+# src/apathetic_logging/namespace.py
+"""Shared Apathetic CLI logger implementation.
+
+See https://docs.python.org/3/library/logging.html for the complete list of
+standard library logging functions that are wrapped by this namespace.
+
+Docstrings are adapted from the standard library logging module documentation
+licensed under the Python Software Foundation License Version 2.
+"""
+
+
+# --- Apathetic Logging Namespace -------------------------------------------
+
+
+class apathetic_logging(  # noqa: N801
+    ApatheticLogging_Internal_Constants,
+    ApatheticLogging_Internal_DualStreamHandler,
+    ApatheticLogging_Internal_GetLogger,
+    ApatheticLogging_Internal_Logger,
+    ApatheticLogging_Internal_LoggingUtils,
+    ApatheticLogging_Internal_Registry,
+    ApatheticLogging_Internal_RegistryData,
+    ApatheticLogging_Internal_SafeLogging,
+    ApatheticLogging_Internal_TagFormatter,
+    ApatheticLogging_Internal_StdCamelCase,  # keep last
+):
+    """Namespace for apathetic logging functionality.
+
+    All logger functionality is accessed via this namespace class to minimize
+    global namespace pollution when the library is embedded in a stitched script.
+
+    **Classes:**
+    - ``Logger`` → ``ApatheticLogging_Internal_Logger``
+    - ``TagFormatter`` → ``ApatheticLogging_Internal_TagFormatter``
+    - ``DualStreamHandler`` → ``ApatheticLogging_Internal_DualStreamHandler``
+
+    **Static Methods:**
+    - ``getLogger()`` → ``ApatheticLogging_Internal_GetLogger``
+    - ``registerDefaultLogLevel()`` → ``ApatheticLogging_Internal_Registry``
+    - ``registerLogLevelEnvVars()`` → ``ApatheticLogging_Internal_Registry``
+    - ``registerLogger()`` → ``ApatheticLogging_Internal_Registry``
+    - ``safeLog()`` → ``ApatheticLogging_Internal_SafeLogging``
+    - ``safeTrace()`` → ``ApatheticLogging_Internal_SafeLogging``
+    - ``makeSafeTrace()`` → ``ApatheticLogging_Internal_SafeLogging``
+
+    **Constants:**
+    - ``DEFAULT_APATHETIC_LOG_LEVEL`` → ``ApatheticLogging_Internal_Constants``
+    - ``DEFAULT_APATHETIC_LOG_LEVEL_ENV_VARS`` → ``ApatheticLogging_Internal_Constants``
+    - ``SAFE_TRACE_ENABLED`` → ``ApatheticLogging_Internal_Constants``
+    - ``TEST_LEVEL`` → ``ApatheticLogging_Internal_Constants``
+    - ``TRACE_LEVEL`` → ``ApatheticLogging_Internal_Constants``
+    - ``MINIMAL_LEVEL`` → ``ApatheticLogging_Internal_Constants``
+    - ``DETAIL_LEVEL`` → ``ApatheticLogging_Internal_Constants``
+    - ``SILENT_LEVEL`` → ``ApatheticLogging_Internal_Constants``
+    - ``LEVEL_ORDER`` → ``ApatheticLogging_Internal_Constants``
+    - ``ANSIColors`` → ``ApatheticLogging_Internal_Constants``
+    - ``TAG_STYLES`` → ``ApatheticLogging_Internal_Constants``
+    """
+
+
+# Ensure logging module is extended with TEST, TRACE, MINIMAL, DETAIL, and SILENT
+# levels
+# This must be called before any loggers are created
+# This runs when namespace.py is executed (both installed and stitched modes)
+# The method is idempotent, so safe to call multiple times if needed
+apathetic_logging.Logger.extendLoggingModule()
+
+# Note: All exports are handled in __init__.py
+# - For library builds (installed/singlefile): __init__.py is included, exports happen
+# - For embedded builds: __init__.py is excluded, no exports (only class available)
+
+
+# === apathetic_logging.__init__ ===
+# src/apathetic_logging/__init__.py
+"""Apathetic Logging implementation."""
+
+
+# Get reference to the namespace class
+# In stitched mode: class is already defined in namespace.py (executed before this)
+# In installed mode: import from namespace module
+_is_standalone = globals().get("__STANDALONE__", False)
+
+if _is_standalone:
+    # Stitched mode: class already defined in namespace.py
+    # Get reference to the class (it's already in globals from namespace.py)
+    _apathetic_logging_raw = globals().get("apathetic_logging")
+    if _apathetic_logging_raw is None:
+        # Fallback: should not happen, but handle gracefully
+        msg = "apathetic_logging class not found in standalone mode"
+        raise RuntimeError(msg)
+    # Type cast to help mypy understand this is the apathetic_logging class
+    # The import gives us type[apathetic_logging], so cast to
+    # type[_apathetic_logging_class]
+    apathetic_logging = cast("type[_apathetic_logging_class]", _apathetic_logging_raw)
+else:
+    # Installed mode: import from namespace module
+    # This block is only executed in installed mode, not in standalone builds
+
+    # Ensure the else block is not empty (build script may remove import)
+    _ = apathetic_logging
+
+# Export all namespace items for convenience
+# These are aliases to apathetic_logging.*
+#
+# Note: In embedded builds, __init__.py is excluded from the stitch,
+# so this code never runs and no exports happen (only the class is available).
+# In singlefile/installed builds, __init__.py is included, so exports happen.
+DEFAULT_APATHETIC_LOG_LEVEL = apathetic_logging.DEFAULT_APATHETIC_LOG_LEVEL
+DEFAULT_APATHETIC_LOG_LEVEL_ENV_VARS = (
+    apathetic_logging.DEFAULT_APATHETIC_LOG_LEVEL_ENV_VARS
+)
+LEVEL_ORDER = apathetic_logging.LEVEL_ORDER
+SILENT_LEVEL = apathetic_logging.SILENT_LEVEL
+TAG_STYLES = apathetic_logging.TAG_STYLES
+TEST_LEVEL = apathetic_logging.TEST_LEVEL
+safeTrace = apathetic_logging.safeTrace
+SAFE_TRACE_ENABLED = apathetic_logging.SAFE_TRACE_ENABLED
+TRACE_LEVEL = apathetic_logging.TRACE_LEVEL
+MINIMAL_LEVEL = apathetic_logging.MINIMAL_LEVEL
+DETAIL_LEVEL = apathetic_logging.DETAIL_LEVEL
+NOTSET_LEVEL = apathetic_logging.NOTSET_LEVEL
+
+# ANSI Colors
+ANSIColors = apathetic_logging.ANSIColors
+
+# Classes
+DualStreamHandler = apathetic_logging.DualStreamHandler
+TagFormatter = apathetic_logging.TagFormatter
+# Logger is a nested class in ApatheticLogging_Internal_Logger that
+# inherits from logging.Logger.
+# Use TypeAlias to help mypy understand this is a class type.
+if TYPE_CHECKING:
+    Logger: TypeAlias = ApatheticLogging_Internal_Logger.Logger
+else:
+    Logger = apathetic_logging.Logger
+
+# Functions (camelCase - stdlib wrappers)
+addLevelName = apathetic_logging.addLevelName
+basicConfig = apathetic_logging.basicConfig
+captureWarnings = apathetic_logging.captureWarnings
+critical = apathetic_logging.critical
+currentframe = apathetic_logging.currentframe
+debug = apathetic_logging.debug
+detail = apathetic_logging.detail
+disable = apathetic_logging.disable
+error = apathetic_logging.error
+exception = apathetic_logging.exception
+fatal = apathetic_logging.fatal
+getHandlerByName = apathetic_logging.getHandlerByName
+getHandlerNames = apathetic_logging.getHandlerNames
+getLevelName = apathetic_logging.getLevelName
+getLevelNamesMapping = apathetic_logging.getLevelNamesMapping
+getLogRecordFactory = apathetic_logging.getLogRecordFactory
+getLogger = apathetic_logging.getLogger
+getLoggerClass = apathetic_logging.getLoggerClass
+info = apathetic_logging.info
+log = apathetic_logging.log
+makeLogRecord = apathetic_logging.makeLogRecord
+minimal = apathetic_logging.minimal
+setLogRecordFactory = apathetic_logging.setLogRecordFactory
+setLoggerClass = apathetic_logging.setLoggerClass
+shutdown = apathetic_logging.shutdown
+trace = apathetic_logging.trace
+warn = apathetic_logging.warn
+warning = apathetic_logging.warning
+
+# Functions (camelCase - library functions)
+getDefaultLogLevel = apathetic_logging.getDefaultLogLevel
+getCompatibilityMode = apathetic_logging.getCompatibilityMode
+getDefaultLoggerName = apathetic_logging.getDefaultLoggerName
+getDefaultPropagate = apathetic_logging.getDefaultPropagate
+getLevelNumber = apathetic_logging.getLevelNumber
+getLevelNameStr = apathetic_logging.getLevelNameStr
+getLogLevelEnvVars = apathetic_logging.getLogLevelEnvVars
+getLoggerOfType = apathetic_logging.getLoggerOfType
+getRegisteredLoggerName = apathetic_logging.getRegisteredLoggerName
+getTargetPythonVersion = apathetic_logging.getTargetPythonVersion
+hasLogger = apathetic_logging.hasLogger
+makeSafeTrace = apathetic_logging.makeSafeTrace
+registerDefaultLogLevel = apathetic_logging.registerDefaultLogLevel
+registerLogLevelEnvVars = apathetic_logging.registerLogLevelEnvVars
+registerLogger = apathetic_logging.registerLogger
+registerCompatibilityMode = apathetic_logging.registerCompatibilityMode
+registerPropagate = apathetic_logging.registerPropagate
+registerTargetPythonVersion = apathetic_logging.registerTargetPythonVersion
+removeLogger = apathetic_logging.removeLogger
+safeLog = apathetic_logging.safeLog
+
+
+__all__ = [
+    "DEFAULT_APATHETIC_LOG_LEVEL",
+    "DEFAULT_APATHETIC_LOG_LEVEL_ENV_VARS",
+    "DETAIL_LEVEL",
+    "LEVEL_ORDER",
+    "MINIMAL_LEVEL",
+    "NOTSET_LEVEL",
+    "SAFE_TRACE_ENABLED",
+    "SILENT_LEVEL",
+    "TAG_STYLES",
+    "TEST_LEVEL",
+    "TRACE_LEVEL",
+    "ANSIColors",
+    "DualStreamHandler",
+    "Logger",
+    "TagFormatter",
+    "addLevelName",
+    "apathetic_logging",
+    "basicConfig",
+    "captureWarnings",
+    "critical",
+    "currentframe",
+    "debug",
+    "detail",
+    "disable",
+    "error",
+    "exception",
+    "fatal",
+    "getCompatibilityMode",
+    "getDefaultLogLevel",
+    "getDefaultLoggerName",
+    "getDefaultPropagate",
+    "getHandlerByName",
+    "getHandlerNames",
+    "getLevelName",
+    "getLevelNameStr",
+    "getLevelNamesMapping",
+    "getLevelNumber",
+    "getLogLevelEnvVars",
+    "getLogRecordFactory",
+    "getLogger",
+    "getLoggerClass",
+    "getLoggerOfType",
+    "getRegisteredLoggerName",
+    "getTargetPythonVersion",
+    "hasLogger",
+    "info",
+    "log",
+    "makeLogRecord",
+    "makeSafeTrace",
+    "minimal",
+    "registerCompatibilityMode",
+    "registerDefaultLogLevel",
+    "registerLogLevelEnvVars",
+    "registerLogger",
+    "registerPropagate",
+    "registerTargetPythonVersion",
+    "removeLogger",
+    "safeLog",
+    "safeTrace",
+    "setLogRecordFactory",
+    "setLoggerClass",
+    "shutdown",
+    "trace",
+    "warn",
+    "warning",
+]
+
+
+# === apathetic_utils.ci ===
+# src/apathetic_utils/ci.py
+"""CI environment detection utilities."""
+
+
+# CI environment variable names that indicate CI environment
+CI_ENV_VARS = ("CI", "GITHUB_ACTIONS", "GIT_TAG", "GITHUB_REF")
+
+
+def is_ci() -> bool:
+    """Check if running in a CI environment.
+
+    Returns True if any of the following environment variables are set:
+    - CI: Generic CI indicator (set by most CI systems)
+    - GITHUB_ACTIONS: GitHub Actions specific
+    - GIT_TAG: Indicates a tagged build
+    - GITHUB_REF: GitHub Actions ref (branch/tag)
 
     Returns:
-        The logger instance from logging.getLogger() (as ApatheticCLILogger type)
+        True if running in CI, False otherwise
+    """
+    return bool(any(os.getenv(var) for var in CI_ENV_VARS))
+
+
+# === apathetic_utils.files ===
+# src/serger/utils/utils_files.py
+
+
+def _strip_jsonc_comments(text: str) -> str:  # noqa: PLR0912
+    """Strip comments from JSONC while preserving string contents.
+
+    Handles //, #, and /* */ comments without modifying content inside strings.
+    """
+    result: list[str] = []
+    in_string = False
+    in_escape = False
+    i = 0
+    while i < len(text):
+        ch = text[i]
+
+        # Handle escape sequences in strings
+        if in_escape:
+            result.append(ch)
+            in_escape = False
+            i += 1
+            continue
+
+        if ch == "\\" and in_string:
+            result.append(ch)
+            in_escape = True
+            i += 1
+            continue
+
+        # Toggle string state
+        if ch in ('"', "'") and (not in_string or text[i - 1 : i] != "\\"):
+            in_string = not in_string
+            result.append(ch)
+            i += 1
+            continue
+
+        # If in a string, keep everything
+        if in_string:
+            result.append(ch)
+            i += 1
+            continue
+
+        # Outside strings: handle comments
+        # Check for // comment (but skip URLs like http://)
+        if (
+            ch == "/"
+            and i + 1 < len(text)
+            and text[i + 1] == "/"
+            and not (i > 0 and text[i - 1] == ":")
+        ):
+            # Skip to end of line
+            while i < len(text) and text[i] != "\n":
+                i += 1
+            if i < len(text):
+                result.append("\n")
+                i += 1
+            continue
+
+        # Check for # comment
+        if ch == "#":
+            # Skip to end of line
+            while i < len(text) and text[i] != "\n":
+                i += 1
+            if i < len(text):
+                result.append("\n")
+                i += 1
+            continue
+
+        # Check for block comments /* ... */
+        if ch == "/" and i + 1 < len(text) and text[i + 1] == "*":
+            # Skip to end of block comment
+            i += 2
+            while i + 1 < len(text):
+                if text[i] == "*" and text[i + 1] == "/":
+                    i += 2
+                    break
+                i += 1
+            continue
+
+        # Regular character
+        result.append(ch)
+        i += 1
+
+    return "".join(result)
+
+
+def load_toml(path: Path, *, required: bool = False) -> dict[str, Any] | None:
+    """Load and parse a TOML file, supporting Python 3.10 and 3.11+.
+
+    Uses:
+    - `tomllib` (Python 3.11+ standard library)
+    - `tomli` (required for Python 3.10 - must be installed separately)
+
+    Args:
+        path: Path to TOML file
+        required: If True, raise RuntimeError when tomli is missing on Python 3.10.
+                  If False, return None when unavailable (caller handles gracefully).
+
+    Returns:
+        Parsed TOML data as a dictionary, or None if unavailable and not required
 
     Raises:
-        RuntimeError: If called before a logger name has been registered and
-            auto-inference fails.
+        FileNotFoundError: If the file doesn't exist
+        RuntimeError: If required=True and neither tomllib nor tomli is available
+        ValueError: If the file cannot be parsed
+    """
+    if not path.exists():
+        xmsg = f"TOML file not found: {path}"
+        raise FileNotFoundError(xmsg)
+
+    # Try tomllib (Python 3.11+)
+    try:
+        import tomllib  # type: ignore[import-not-found] # noqa: PLC0415
+
+        with path.open("rb") as f:
+            return tomllib.load(f)  # type: ignore[no-any-return]
+    except ImportError:
+        pass
+
+    # Try tomli (required for Python 3.10)
+    try:
+        import tomli  # type: ignore[import-not-found,unused-ignore] # noqa: PLC0415  # pyright: ignore[reportMissingImports]
+
+        with path.open("rb") as f:
+            return tomli.load(f)  # type: ignore[no-any-return,unused-ignore]  # pyright: ignore[reportUnknownReturnType]
+    except ImportError:
+        if required:
+            xmsg = (
+                "TOML parsing requires 'tomli' package on Python 3.10. "
+                "Install it with: pip install tomli, or disable pyproject.toml support "
+                "by setting 'use_pyproject_metadata: false' in your config."
+            )
+            raise RuntimeError(xmsg) from None
+        return None
+
+
+def load_jsonc(path: Path) -> dict[str, Any] | list[Any] | None:
+    """Load JSONC (JSON with comments and trailing commas)."""
+    logger = getLogger()
+    logger.trace(f"[load_jsonc] Loading from {path}")
+
+    if not path.exists():
+        xmsg = f"JSONC file not found: {path}"
+        raise FileNotFoundError(xmsg)
+
+    if not path.is_file():
+        xmsg = f"Expected a file: {path}"
+        raise ValueError(xmsg)
+
+    text = path.read_text(encoding="utf-8")
+    text = _strip_jsonc_comments(text)
+
+    # Remove trailing commas before } or ]
+    text = re.sub(r",(?=\s*[}\]])", "", text)
+
+    # Trim whitespace
+    text = text.strip()
+
+    if not text:
+        # Empty or only comments → interpret as "no config"
+        return None
+
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as e:
+        xmsg = (
+            f"Invalid JSONC syntax in {path}:"
+            f" {e.msg} (line {e.lineno}, column {e.colno})"
+        )
+        raise ValueError(xmsg) from e
+
+    # Guard against scalar roots (invalid config structure)
+    if not isinstance(data, (dict, list)):
+        xmsg = f"Invalid JSONC root type: {type(data).__name__}"
+        raise ValueError(xmsg)  # noqa: TRY004
+
+    # narrow type
+    result = cast("dict[str, Any] | list[Any]", data)
+    logger.trace(
+        f"[load_jsonc] Loaded {type(result).__name__} with"
+        f" {len(result) if hasattr(result, '__len__') else 'N/A'} items"
+    )
+    return result
+
+
+# === apathetic_utils.paths ===
+# src/serger/utils/utils_paths.py
+
+
+def normalize_path_string(raw: str) -> str:
+    r"""Normalize a user-supplied path string for cross-platform use.
+
+    Industry-standard (Git/Node/Python) rules:
+      - Treat both '/' and '\\' as valid separators and normalize all to '/'.
+      - Replace escaped spaces ('\\ ') with real spaces.
+      - Collapse redundant slashes (preserve protocol prefixes like 'file://').
+      - Never resolve '.' or '..' or touch the filesystem.
+      - Never raise for syntax; normalization is always possible.
+
+    This is the pragmatic cross-platform normalization strategy used by
+    Git, Node.js, and Python build tools.
+    This function is purely lexical — it normalizes syntax, not filesystem state.
+    """
+    logger = getLogger()
+    if not raw:
+        return ""
+
+    path = raw.strip()
+
+    # Handle escaped spaces (common shell copy-paste)
+    if "\\ " in path:
+        fixed = path.replace("\\ ", " ")
+        logger.warning("Normalizing escaped spaces in path: %r → %s", path, fixed)
+        path = fixed
+
+    # Normalize all backslashes to forward slashes
+    path = path.replace("\\", "/")
+
+    # Collapse redundant slashes (keep protocol //)
+    collapsed_slashes = re.sub(r"(?<!:)//+", "/", path)
+    if collapsed_slashes != path:
+        logger.trace("Collapsed redundant slashes: %r → %r", path, collapsed_slashes)
+        path = collapsed_slashes
+
+    return path
+
+
+def has_glob_chars(s: str) -> bool:
+    return any(c in s for c in "*?[]")
+
+
+def get_glob_root(pattern: str) -> Path:
+    """Return the non-glob portion of a path like 'src/**/*.txt'.
+
+    Normalizes paths to cross-platform.
+    """
+    if not pattern:
+        return Path()
+
+    # Normalize backslashes to forward slashes
+    normalized = normalize_path_string(pattern)
+
+    parts: list[str] = []
+    for part in Path(normalized).parts:
+        if re.search(r"[*?\[\]]", part):
+            break
+        parts.append(part)
+    return Path(*parts) if parts else Path()
+
+
+# === apathetic_utils.system ===
+# src/serger/utils/utils_system.py
+
+
+# --- types --------------------------------------------------------------------
+
+
+@dataclass
+class CapturedOutput:
+    """Captured stdout, stderr, and merged streams."""
+
+    stdout: StringIO
+    stderr: StringIO
+    merged: StringIO
+
+    def __str__(self) -> str:
+        """Human-friendly representation (merged output)."""
+        return self.merged.getvalue()
+
+    def as_dict(self) -> dict[str, str]:
+        """Return contents as plain strings for serialization."""
+        return {
+            "stdout": self.stdout.getvalue(),
+            "stderr": self.stderr.getvalue(),
+            "merged": self.merged.getvalue(),
+        }
+
+
+# --- system utilities --------------------------------------------------------
+
+
+def get_sys_version_info() -> tuple[int, int, int] | tuple[int, int, int, str, int]:
+    return sys.version_info
+
+
+def is_running_under_pytest() -> bool:
+    """Detect if code is running under pytest.
+
+    Checks multiple indicators:
+    - Environment variables set by pytest
+    - Command-line arguments containing 'pytest'
+
+    Returns:
+        True if running under pytest, False otherwise
+    """
+    return (
+        "pytest" in os.environ.get("_", "")
+        or "PYTEST_CURRENT_TEST" in os.environ
+        or any(
+            "pytest" in arg
+            for arg in sys.argv
+            if isinstance(arg, str)  # pyright: ignore[reportUnnecessaryIsInstance]
+        )
+    )
+
+
+def detect_runtime_mode() -> str:  # noqa: PLR0911
+    if getattr(sys, "frozen", False):
+        return "frozen"
+    if "__main__" in sys.modules and getattr(
+        sys.modules["__main__"],
+        __file__,
+        "",
+    ).endswith(".pyz"):
+        return "zipapp"
+    # Check for standalone mode in multiple locations
+    # 1. Current module's globals (for when called from within standalone script)
+    if "__STANDALONE__" in globals():
+        return "standalone"
+    # 2. Check package module's globals (when loaded via importlib)
+    # The standalone script is loaded as the "serger" package
+    pkg_mod = sys.modules.get("serger")
+    if pkg_mod is not None and hasattr(pkg_mod, "__STANDALONE__"):
+        return "standalone"
+    # 3. Check __main__ module's globals (for script execution)
+    if "__main__" in sys.modules:
+        main_mod = sys.modules["__main__"]
+        if hasattr(main_mod, "__STANDALONE__"):
+            return "standalone"
+    return "installed"
+
+
+@contextmanager
+def capture_output() -> Iterator[CapturedOutput]:
+    """Temporarily capture stdout and stderr.
+
+    Any exception raised inside the block is re-raised with
+    the captured output attached as `exc.captured_output`.
+
+    Example:
+    from serger.utils import capture_output
+    from serger.cli import main
+
+    with capture_output() as cap:
+        exit_code = main(["--config", "my.cfg", "--dry-run"])
+
+    result = {
+        "exit_code": exit_code,
+        "stdout": cap.stdout.getvalue(),
+        "stderr": cap.stderr.getvalue(),
+        "merged": cap.merged.getvalue(),
+    }
+
+    """
+    merged = StringIO()
+
+    class TeeStream(StringIO):
+        def write(self, s: str) -> int:
+            merged.write(s)
+            return super().write(s)
+
+    buf_out, buf_err = TeeStream(), TeeStream()
+    old_out, old_err = sys.stdout, sys.stderr
+    sys.stdout, sys.stderr = buf_out, buf_err
+
+    cap = CapturedOutput(stdout=buf_out, stderr=buf_err, merged=merged)
+    try:
+        yield cap
+    except Exception as e:
+        # Attach captured output to the raised exception for API introspection
+        e.captured_output = cap  # type: ignore[attr-defined]
+        raise
+    finally:
+        sys.stdout, sys.stderr = old_out, old_err
+
+
+# === apathetic_utils.matching ===
+# src/serger/utils/utils_matching.py
+
+
+@lru_cache(maxsize=512)
+def _compile_glob_recursive(pattern: str) -> re.Pattern[str]:
+    """
+    Compile a glob pattern to regex, backporting recursive '**' on Python < 3.11.
+    This translator handles literals, ?, *, **, and [] classes without relying on
+    slicing fnmatch.translate() output, avoiding unbalanced parentheses.
+    Always case-sensitive.
+    """
+
+    def _escape_lit(ch: str) -> str:
+        # Escape regex metacharacters
+        if ch in ".^$+{}[]|()\\":
+            return "\\" + ch
+        return ch
+
+    i = 0
+    n = len(pattern)
+    pieces: list[str] = []
+    while i < n:
+        ch = pattern[i]
+
+        # Character class: copy through closing ']'
+        if ch == "[":
+            j = i + 1
+            if j < n and pattern[j] in "!^":
+                j += 1
+            # allow leading ']' inside class as a literal
+            if j < n and pattern[j] == "]":
+                j += 1
+            while j < n and pattern[j] != "]":
+                j += 1
+            if j < n and pattern[j] == "]":
+                # whole class, keep as-is (regex already)
+                pieces.append(pattern[i : j + 1])
+                i = j + 1
+            else:
+                # unmatched '[', treat literally
+                pieces.append("\\[")
+                i += 1
+            continue
+
+        # Recursive glob
+        if ch == "*" and i + 1 < n and pattern[i + 1] == "*":
+            # Collapse a run of consecutive '*' to detect '**'
+            k = i + 2
+            while k < n and pattern[k] == "*":
+                k += 1
+            # Treat any run >= 2 as recursive
+            pieces.append(".*")
+            i = k
+            continue
+
+        # Single-segment glob
+        if ch == "*":
+            pieces.append("[^/]*")
+            i += 1
+            continue
+
+        # Single character
+        if ch == "?":
+            pieces.append("[^/]")
+            i += 1
+            continue
+
+        # Path separator or literal
+        pieces.append(_escape_lit(ch))
+        i += 1
+
+    inner = "".join(pieces)
+    return re.compile(f"(?s:{inner})\\Z")
+
+
+def fnmatchcase_portable(path: str, pattern: str) -> bool:
+    """
+    Case-sensitive glob pattern matching with Python 3.10 '**' backport.
+
+    Uses fnmatchcase (case-sensitive) as the base, with backported support
+    for recursive '**' patterns on Python 3.10.
+
+    Args:
+        path: The path to match against the pattern
+        pattern: The glob pattern to match
+
+    Returns:
+        True if the path matches the pattern, False otherwise.
+    """
+    if get_sys_version_info() >= (3, 11) or "**" not in pattern:
+        return fnmatchcase(path, pattern)
+    return bool(_compile_glob_recursive(pattern).match(path))
+
+
+def is_excluded_raw(  # noqa: PLR0911, PLR0912, PLR0915, C901
+    path: Path | str,
+    exclude_patterns: list[str],
+    root: Path | str,
+) -> bool:
+    """Smart matcher for normalized inputs.
+
+    - Treats 'path' as relative to 'root' unless already absolute.
+    - If 'root' is a file, match directly.
+    - Handles absolute or relative glob patterns.
+
+    Special behavior for patterns with '../':
+    Unlike rsync/ruff (which don't support '../' in exclude patterns),
+    serger allows patterns with '../' to explicitly match files outside
+    the exclude root. This enables config files in subdirectories to
+    exclude files elsewhere in the project. Patterns containing '../'
+    are resolved relative to the exclude root, then matched against
+    the absolute file path.
 
     Note:
-        This function is used internally by utils_logs.py. Applications
-        should use their app-specific getter (e.g., get_app_logger()) for
-        better type hints.
+    The function does not require `root` to exist; if it does not,
+    a debug message is logged and matching is purely path-based.
     """
-    global _registered_logger_name  # noqa: PLW0603
+    logger = getLogger()
+    root = Path(root).resolve()
+    path = Path(path)
 
-    if _registered_logger_name is None:
-        # Try to auto-infer from the calling module's package
-        frame = inspect.currentframe()
-        if frame is not None:
-            try:
-                # Get the calling frame (skip get_logger itself)
-                caller_frame = frame.f_back
-                if caller_frame is not None:
-                    caller_module = caller_frame.f_globals.get("__package__")
-                    if caller_module:
-                        inferred_name = _extract_top_level_package(caller_module)
-                        if inferred_name:
-                            _registered_logger_name = inferred_name
-                            TEST_TRACE(
-                                "get_logger() auto-inferred logger name",
-                                f"name={inferred_name}",
-                                f"from_module={caller_module}",
-                            )
-            finally:
-                del frame
-
-    if _registered_logger_name is None:
-        _msg = (
-            "Logger name not registered and could not be auto-inferred. "
-            "Call register_logger_name() or ensure your app's logs module is imported."
-        )
-        raise RuntimeError(_msg)
-
-    logger = logging.getLogger(_registered_logger_name)
-    # Cast to ApatheticCLILogger - at runtime this will be AppLogger if registered
-    typed_logger = cast("ApatheticCLILogger", logger)
-    TEST_TRACE(
-        "get_logger() called",
-        f"name={typed_logger.name}",
-        f"id={id(typed_logger)}",
-        f"level={typed_logger.level_name}",
-        f"handlers={[type(h).__name__ for h in typed_logger.handlers]}",
+    logger.trace(
+        f"[is_excluded_raw] Checking path={path} against"
+        f" {len(exclude_patterns)} patterns"
     )
-    return typed_logger
+
+    # the callee really should deal with this, otherwise we might spam
+    if not Path(root).exists():
+        logger.debug("Exclusion root does not exist: %s", root)
+
+    # If the root itself is a file, treat that as a direct exclusion target.
+    if root.is_file():
+        # If the given path resolves exactly to that file, exclude it.
+        full_path = path if path.is_absolute() else (root.parent / path)
+        return full_path.resolve() == root.resolve()
+
+    # If no exclude patterns, nothing else to exclude
+    if not exclude_patterns:
+        return False
+
+    # Otherwise, treat as directory root.
+    full_path = path if path.is_absolute() else (root / path)
+    full_path = full_path.resolve()
+
+    # Try to get relative path for standard matching
+    try:
+        rel = str(full_path.relative_to(root)).replace("\\", "/")
+        path_outside_root = False
+    except ValueError:
+        # Path lies outside the root
+        path_outside_root = True
+        # For patterns starting with **/, we can still match against filename
+        # or absolute path. For other patterns, we need rel, so use empty string
+        # as fallback (won't match non-**/ patterns)
+        rel = ""
+
+    for pattern in exclude_patterns:
+        pat = pattern.replace("\\", "/")
+
+        # Handle patterns starting with **/ - these should match even for files
+        # outside the exclude root (matching rsync/ruff behavior)
+        if pat.startswith("**/"):
+            # For **/ patterns, match against:
+            # 1. The file's name (e.g., **/__init__.py matches any __init__.py)
+            # 2. The absolute path (for more complex patterns with subdirectories)
+            file_name = full_path.name
+            abs_path_str = str(full_path).replace("\\", "/")
+
+            # Remove **/ prefix and match against filename
+            pattern_suffix = pat[3:]  # Remove "**/" prefix
+            if fnmatchcase_portable(file_name, pattern_suffix):
+                logger.trace(
+                    f"[is_excluded_raw] MATCHED **/ pattern {pattern!r} "
+                    f"against filename {file_name}"
+                )
+                return True
+
+            # Also try matching against absolute path, but only if the pattern
+            # suffix contains directory separators (for patterns like **/subdir/file.py)
+            # If the suffix has no directory separators, we've already checked
+            # the filename above, so skip absolute path matching to avoid false
+            # positives (e.g., **/test_*.py shouldn't match paths containing "test")
+            has_dir_sep = "/" in pattern_suffix or "\\" in pattern_suffix
+            if has_dir_sep and fnmatchcase_portable(abs_path_str, pat):
+                logger.trace(
+                    f"[is_excluded_raw] MATCHED **/ pattern {pattern!r} "
+                    f"against absolute path"
+                )
+                return True
+
+            # Continue to next pattern if we're outside root and **/ didn't match
+            if path_outside_root:
+                continue
+
+        # Handle patterns with ../ - serger-specific behavior to allow
+        # patterns that explicitly navigate outside the exclude root
+        if "../" in pat or pat.startswith("../"):
+            # Resolve the pattern relative to the exclude root
+            # We need to handle glob patterns (with **) by resolving the base
+            # path and preserving the glob part
+            try:
+                abs_path_str = str(full_path).replace("\\", "/")
+
+                # If pattern contains glob chars, split and resolve carefully
+                if "*" in pat or "?" in pat or "[" in pat:
+                    # Find the first glob character to split base from pattern
+                    glob_chars = ["*", "?", "["]
+                    first_glob_pos = min(
+                        (pat.find(c) for c in glob_chars if c in pat),
+                        default=len(pat),
+                    )
+
+                    # Split into base path (before glob) and pattern part
+                    base_part = pat[:first_glob_pos].rstrip("/")
+                    pattern_part = pat[first_glob_pos:]
+
+                    # Resolve the base part relative to root
+                    if base_part:
+                        resolved_base = (root / base_part).resolve()
+                        resolved_pattern_str = (
+                            str(resolved_base).replace("\\", "/") + "/" + pattern_part
+                        )
+                    else:
+                        # Pattern starts with glob, resolve root and prepend pattern
+                        resolved_pattern_str = (
+                            str(root).replace("\\", "/") + "/" + pattern_part
+                        )
+                else:
+                    # No glob chars, resolve normally
+                    resolved_pattern = (root / pat).resolve()
+                    resolved_pattern_str = str(resolved_pattern).replace("\\", "/")
+
+                # Match the resolved pattern against the absolute file path
+                if fnmatchcase_portable(abs_path_str, resolved_pattern_str):
+                    logger.trace(
+                        f"[is_excluded_raw] MATCHED ../ pattern {pattern!r} "
+                        f"(resolved to {resolved_pattern_str})"
+                    )
+                    return True
+            except (ValueError, RuntimeError):
+                # Pattern resolves outside filesystem or invalid, skip
+                logger.trace(
+                    f"[is_excluded_raw] Could not resolve ../ pattern {pattern!r}"
+                )
+
+        # If path is outside root and pattern doesn't start with **/ or
+        # contain ../, skip
+        if path_outside_root:
+            continue
+
+        logger.trace(f"[is_excluded_raw] Testing pattern {pattern!r} against {rel}")
+
+        # If pattern is absolute and under root, adjust to relative form
+        if pat.startswith(str(root)):
+            try:
+                pat_rel = str(Path(pat).relative_to(root)).replace("\\", "/")
+            except ValueError:
+                pat_rel = pat  # not under root; treat as-is
+            if fnmatchcase_portable(rel, pat_rel):
+                logger.trace(f"[is_excluded_raw] MATCHED pattern {pattern!r}")
+                return True
+
+        # Otherwise treat pattern as relative glob
+        if fnmatchcase_portable(rel, pat):
+            logger.trace(f"[is_excluded_raw] MATCHED pattern {pattern!r}")
+            return True
+
+        # Optional directory-only semantics
+        if pat.endswith("/") and rel.startswith(pat.rstrip("/") + "/"):
+            logger.trace(f"[is_excluded_raw] MATCHED pattern {pattern!r}")
+            return True
+
+    return False
 
 
-# === serger.apathetic_schema.schema ===
+# === apathetic_utils.text ===
+# src/serger/utils/utils_text.py
+
+
+def plural(obj: Any) -> str:
+    """Return 's' if obj represents a plural count.
+
+    Accepts ints, floats, and any object implementing __len__().
+    Returns '' for singular or zero.
+    """
+    count: int | float
+    try:
+        count = len(obj)
+    except TypeError:
+        # fallback for numbers or uncountable types
+        count = obj if isinstance(obj, (int, float)) else 0
+    return "s" if count != 1 else ""
+
+
+def remove_path_in_error_message(inner_msg: str, path: Path) -> str:
+    """Remove redundant file path mentions (and nearby filler)
+    from error messages.
+
+    Useful when wrapping a lower-level exception that already
+    embeds its own file reference, so the higher-level message
+    can use its own path without duplication.
+
+    Example:
+        "Invalid JSONC syntax in /abs/path/config.jsonc: Expecting value"
+        → "Invalid JSONC syntax: Expecting value"
+
+    """
+    # Normalize both path and name for flexible matching
+    full_path = str(path)
+    filename = path.name
+
+    # Common redundant phrases we might need to remove
+    candidates = [
+        f"in {full_path}",
+        f"in '{full_path}'",
+        f'in "{full_path}"',
+        f"in {filename}",
+        f"in '{filename}'",
+        f'in "{filename}"',
+        full_path,
+        filename,
+    ]
+
+    clean_msg = inner_msg
+    for pattern in candidates:
+        clean_msg = clean_msg.replace(pattern, "").strip(": ").strip()
+
+    # Normalize leftover spaces and colons
+    clean_msg = re.sub(r"\s{2,}", " ", clean_msg)
+    clean_msg = re.sub(r"\s*:\s*", ": ", clean_msg)
+
+    return clean_msg
+
+
+# === apathetic_utils.types ===
+# src/serger/utils/utils_types.py
+
+
+T = TypeVar("T")
+
+
+def cast_hint(typ: type[T], value: Any) -> T:  # noqa: ARG001
+    """Explicit cast that documents intent but is purely for type hinting.
+
+    A drop-in replacement for `typing.cast`, meant for places where:
+      - You want to silence mypy's redundant-cast warnings.
+      - You want to signal "this narrowing is intentional."
+      - You need IDEs (like Pylance) to retain strong inference on a value.
+
+    Does not handle Union, Optional, or nested generics: stick to cast(),
+      because unions almost always represent a meaningful type narrowing.
+
+    This function performs *no runtime checks*.
+    """
+    return cast("T", value)
+
+
+def schema_from_typeddict(td: type[Any]) -> dict[str, Any]:
+    """Extract field names and their annotated types from a TypedDict."""
+    return get_type_hints(td, include_extras=True)
+
+
+def literal_to_set(literal_type: Any) -> set[Any]:
+    """Extract values from a Literal type as a set.
+
+    Example:
+        StitchMode = Literal["raw", "package"]
+        valid_modes = literal_to_set(StitchMode)  # Returns set with literal values
+
+    Args:
+        literal_type: A Literal type (e.g., Literal["a", "b"])
+
+    Returns:
+        A set containing all values from the Literal type.
+        Returns set[Any] to allow flexible operations without requiring
+        casts. The actual values are constrained by the Literal type at
+        runtime validation.
+
+    Type Safety Tradeoffs:
+        This function returns set[Any] after considering three approaches:
+
+        1. set[Any] (current): Allows flexible operations (e.g., sorted(),
+           membership checks) without requiring casts. Less type-safe but
+           more ergonomic for common use cases.
+
+        2. set[str | int | float | bool | None]: More type-safe, but requires
+           casts for operations like sorted() that expect specific types,
+           creating noise and potential for errors.
+
+        3. TypeVar (like cast_hint): Would provide perfect type inference,
+           but Python's type system cannot extract the union of literal
+           values from a Literal type at the type level.
+
+        The current approach prioritizes ergonomics while still providing
+        runtime validation that the input is a Literal type.
+
+    Raises:
+        TypeError: If the input is not a Literal type
+    """
+    origin = get_origin(literal_type)
+    if origin is not Literal:
+        msg = f"Expected Literal type, got {literal_type}"
+        raise TypeError(msg)
+    return set(get_args(literal_type))
+
+
+def _isinstance_generics(  # noqa: PLR0911
+    value: Any,
+    origin: Any,
+    args: tuple[Any, ...],
+) -> bool:
+    # Outer container check
+    if not isinstance(value, origin):
+        return False
+
+    # Recursively check elements for known homogeneous containers
+    if not args:
+        return True
+
+    # list[str]
+    if origin is list and isinstance(value, list):
+        subtype = args[0]
+        items = cast_hint(list[Any], value)
+        return all(safe_isinstance(v, subtype) for v in items)
+
+    # dict[str, int]
+    if origin is dict and isinstance(value, dict):
+        key_t, val_t = args if len(args) == 2 else (Any, Any)  # noqa: PLR2004
+        dct = cast_hint(dict[Any, Any], value)
+        return all(
+            safe_isinstance(k, key_t) and safe_isinstance(v, val_t)
+            for k, v in dct.items()
+        )
+
+    # Tuple[str, int] etc.
+    if origin is tuple and isinstance(value, tuple):
+        subtypes = args
+        tup = cast_hint(tuple[Any, ...], value)
+        if len(subtypes) == len(tup):
+            return all(
+                safe_isinstance(v, t) for v, t in zip(tup, subtypes, strict=False)
+            )
+        if len(subtypes) == 2 and subtypes[1] is Ellipsis:  # noqa: PLR2004
+            return all(safe_isinstance(v, subtypes[0]) for v in tup)
+        return False
+
+    return True  # e.g., other typing origins like set[], Iterable[]
+
+
+def safe_isinstance(value: Any, expected_type: Any) -> bool:  # noqa: PLR0911
+    """Like isinstance(), but safe for TypedDicts and typing generics.
+
+    Handles:
+      - typing.Union, Optional, Any
+      - typing.NotRequired
+      - TypedDict subclasses
+      - list[...] with inner types
+      - Defensive fallback for exotic typing constructs
+    """
+    # --- Always allow Any ---
+    if expected_type is Any:
+        return True
+
+    origin = get_origin(expected_type)
+    args = get_args(expected_type)
+
+    # --- Handle NotRequired (extract inner type) ---
+    if origin is NotRequired:
+        # NotRequired[str] → validate as str
+        if args:
+            return safe_isinstance(value, args[0])
+        return True
+
+    # --- Handle Literals explicitly ---
+    if origin is Literal:
+        # Literal["x", "y"] → True if value equals any of the allowed literals
+        return value in args
+
+    # --- Handle Unions (includes Optional) ---
+    if origin in {Union, UnionType}:
+        # e.g. Union[str, int]
+        return any(safe_isinstance(value, t) for t in args)
+
+    # --- Handle special case: TypedDicts ---
+    try:
+        if (
+            isinstance(expected_type, type)
+            and hasattr(expected_type, "__annotations__")
+            and hasattr(expected_type, "__total__")
+        ):
+            # Treat TypedDict-like as dict
+            return isinstance(value, dict)
+    except TypeError:
+        # Not a class — skip
+        pass
+
+    # --- Handle generics like list[str], dict[str, int] ---
+    if origin:
+        return _isinstance_generics(value, origin, args)
+
+    # --- Fallback for simple types ---
+    try:
+        return isinstance(value, expected_type)
+    except TypeError:
+        # Non-type or strange typing construct
+        return False
+
+
+# === apathetic_utils.__init__ ===
+"""Apathetic utilities package."""
+
+
+__all__ = [  # noqa: RUF022
+    # ci
+    "CI_ENV_VARS",
+    "is_ci",
+    # files
+    "load_jsonc",
+    "load_toml",
+    # matching
+    "fnmatchcase_portable",
+    "is_excluded_raw",
+    # paths
+    "get_glob_root",
+    "has_glob_chars",
+    "normalize_path_string",
+    # system
+    "CapturedOutput",
+    "capture_output",
+    "detect_runtime_mode",
+    "get_sys_version_info",
+    "is_running_under_pytest",
+    # text
+    "plural",
+    "remove_path_in_error_message",
+    # types
+    "cast_hint",
+    "literal_to_set",
+    "safe_isinstance",
+    "schema_from_typeddict",
+]
+
+
+# === apathetic_schema.schema ===
 # src/serger/utils/utils_schema.py
 
 
@@ -1356,557 +4639,19 @@ def check_schema_conformance(
     )
 
 
-# === serger.apathetic_utils.system ===
-# src/serger/utils/utils_system.py
-
-
-# --- types --------------------------------------------------------------------
-
-
-@dataclass
-class CapturedOutput:
-    """Captured stdout, stderr, and merged streams."""
-
-    stdout: StringIO
-    stderr: StringIO
-    merged: StringIO
-
-    def __str__(self) -> str:
-        """Human-friendly representation (merged output)."""
-        return self.merged.getvalue()
-
-    def as_dict(self) -> dict[str, str]:
-        """Return contents as plain strings for serialization."""
-        return {
-            "stdout": self.stdout.getvalue(),
-            "stderr": self.stderr.getvalue(),
-            "merged": self.merged.getvalue(),
-        }
-
-
-# --- system utilities --------------------------------------------------------
-
-
-def get_sys_version_info() -> tuple[int, int, int] | tuple[int, int, int, str, int]:
-    return sys.version_info
-
-
-def is_running_under_pytest() -> bool:
-    """Detect if code is running under pytest.
-
-    Checks multiple indicators:
-    - Environment variables set by pytest
-    - Command-line arguments containing 'pytest'
-
-    Returns:
-        True if running under pytest, False otherwise
-    """
-    return (
-        "pytest" in os.environ.get("_", "")
-        or "PYTEST_CURRENT_TEST" in os.environ
-        or any(
-            "pytest" in arg
-            for arg in sys.argv
-            if isinstance(arg, str)  # pyright: ignore[reportUnnecessaryIsInstance]
-        )
-    )
-
-
-def detect_runtime_mode() -> str:  # noqa: PLR0911
-    if getattr(sys, "frozen", False):
-        return "frozen"
-    if "__main__" in sys.modules and getattr(
-        sys.modules["__main__"],
-        __file__,
-        "",
-    ).endswith(".pyz"):
-        return "zipapp"
-    # Check for standalone mode in multiple locations
-    # 1. Current module's globals (for when called from within standalone script)
-    if "__STANDALONE__" in globals():
-        return "standalone"
-    # 2. Check package module's globals (when loaded via importlib)
-    # The standalone script is loaded as the "serger" package
-    pkg_mod = sys.modules.get("serger")
-    if pkg_mod is not None and hasattr(pkg_mod, "__STANDALONE__"):
-        return "standalone"
-    # 3. Check __main__ module's globals (for script execution)
-    if "__main__" in sys.modules:
-        main_mod = sys.modules["__main__"]
-        if hasattr(main_mod, "__STANDALONE__"):
-            return "standalone"
-    return "installed"
-
-
-@contextmanager
-def capture_output() -> Iterator[CapturedOutput]:
-    """Temporarily capture stdout and stderr.
-
-    Any exception raised inside the block is re-raised with
-    the captured output attached as `exc.captured_output`.
-
-    Example:
-    from serger.utils import capture_output
-    from serger.cli import main
-
-    with capture_output() as cap:
-        exit_code = main(["--config", "my.cfg", "--dry-run"])
-
-    result = {
-        "exit_code": exit_code,
-        "stdout": cap.stdout.getvalue(),
-        "stderr": cap.stderr.getvalue(),
-        "merged": cap.merged.getvalue(),
-    }
-
-    """
-    merged = StringIO()
-
-    class TeeStream(StringIO):
-        def write(self, s: str) -> int:
-            merged.write(s)
-            return super().write(s)
-
-    buf_out, buf_err = TeeStream(), TeeStream()
-    old_out, old_err = sys.stdout, sys.stderr
-    sys.stdout, sys.stderr = buf_out, buf_err
-
-    cap = CapturedOutput(stdout=buf_out, stderr=buf_err, merged=merged)
-    try:
-        yield cap
-    except Exception as e:
-        # Attach captured output to the raised exception for API introspection
-        e.captured_output = cap  # type: ignore[attr-defined]
-        raise
-    finally:
-        sys.stdout, sys.stderr = old_out, old_err
-
-
-# === serger.apathetic_utils.text ===
-# src/serger/utils/utils_text.py
-
-
-def plural(obj: Any) -> str:
-    """Return 's' if obj represents a plural count.
-
-    Accepts ints, floats, and any object implementing __len__().
-    Returns '' for singular or zero.
-    """
-    count: int | float
-    try:
-        count = len(obj)
-    except TypeError:
-        # fallback for numbers or uncountable types
-        count = obj if isinstance(obj, (int, float)) else 0
-    return "s" if count != 1 else ""
-
-
-def remove_path_in_error_message(inner_msg: str, path: Path) -> str:
-    """Remove redundant file path mentions (and nearby filler)
-    from error messages.
-
-    Useful when wrapping a lower-level exception that already
-    embeds its own file reference, so the higher-level message
-    can use its own path without duplication.
-
-    Example:
-        "Invalid JSONC syntax in /abs/path/config.jsonc: Expecting value"
-        → "Invalid JSONC syntax: Expecting value"
-
-    """
-    # Normalize both path and name for flexible matching
-    full_path = str(path)
-    filename = path.name
-
-    # Common redundant phrases we might need to remove
-    candidates = [
-        f"in {full_path}",
-        f"in '{full_path}'",
-        f'in "{full_path}"',
-        f"in {filename}",
-        f"in '{filename}'",
-        f'in "{filename}"',
-        full_path,
-        filename,
-    ]
-
-    clean_msg = inner_msg
-    for pattern in candidates:
-        clean_msg = clean_msg.replace(pattern, "").strip(": ").strip()
-
-    # Normalize leftover spaces and colons
-    clean_msg = re.sub(r"\s{2,}", " ", clean_msg)
-    clean_msg = re.sub(r"\s*:\s*", ": ", clean_msg)
-
-    return clean_msg
-
-
-# === serger.apathetic_utils.types ===
-# src/serger/utils/utils_types.py
-
-
-T = TypeVar("T")
-
-
-def cast_hint(typ: type[T], value: Any) -> T:  # noqa: ARG001
-    """Explicit cast that documents intent but is purely for type hinting.
-
-    A drop-in replacement for `typing.cast`, meant for places where:
-      - You want to silence mypy's redundant-cast warnings.
-      - You want to signal "this narrowing is intentional."
-      - You need IDEs (like Pylance) to retain strong inference on a value.
-
-    Does not handle Union, Optional, or nested generics: stick to cast(),
-      because unions almost always represent a meaningful type narrowing.
-
-    This function performs *no runtime checks*.
-    """
-    return cast("T", value)
-
-
-def schema_from_typeddict(td: type[Any]) -> dict[str, Any]:
-    """Extract field names and their annotated types from a TypedDict."""
-    return get_type_hints(td, include_extras=True)
-
-
-def literal_to_set(literal_type: Any) -> set[Any]:
-    """Extract values from a Literal type as a set.
-
-    Example:
-        StitchMode = Literal["raw", "package"]
-        valid_modes = literal_to_set(StitchMode)  # Returns set with literal values
-
-    Args:
-        literal_type: A Literal type (e.g., Literal["a", "b"])
-
-    Returns:
-        A set containing all values from the Literal type.
-        Returns set[Any] to allow flexible operations without requiring
-        casts. The actual values are constrained by the Literal type at
-        runtime validation.
-
-    Type Safety Tradeoffs:
-        This function returns set[Any] after considering three approaches:
-
-        1. set[Any] (current): Allows flexible operations (e.g., sorted(),
-           membership checks) without requiring casts. Less type-safe but
-           more ergonomic for common use cases.
-
-        2. set[str | int | float | bool | None]: More type-safe, but requires
-           casts for operations like sorted() that expect specific types,
-           creating noise and potential for errors.
-
-        3. TypeVar (like cast_hint): Would provide perfect type inference,
-           but Python's type system cannot extract the union of literal
-           values from a Literal type at the type level.
-
-        The current approach prioritizes ergonomics while still providing
-        runtime validation that the input is a Literal type.
-
-    Raises:
-        TypeError: If the input is not a Literal type
-    """
-    origin = get_origin(literal_type)
-    if origin is not Literal:
-        msg = f"Expected Literal type, got {literal_type}"
-        raise TypeError(msg)
-    return set(get_args(literal_type))
-
-
-def _isinstance_generics(  # noqa: PLR0911
-    value: Any,
-    origin: Any,
-    args: tuple[Any, ...],
-) -> bool:
-    # Outer container check
-    if not isinstance(value, origin):
-        return False
-
-    # Recursively check elements for known homogeneous containers
-    if not args:
-        return True
-
-    # list[str]
-    if origin is list and isinstance(value, list):
-        subtype = args[0]
-        items = cast_hint(list[Any], value)
-        return all(safe_isinstance(v, subtype) for v in items)
-
-    # dict[str, int]
-    if origin is dict and isinstance(value, dict):
-        key_t, val_t = args if len(args) == 2 else (Any, Any)  # noqa: PLR2004
-        dct = cast_hint(dict[Any, Any], value)
-        return all(
-            safe_isinstance(k, key_t) and safe_isinstance(v, val_t)
-            for k, v in dct.items()
-        )
-
-    # Tuple[str, int] etc.
-    if origin is tuple and isinstance(value, tuple):
-        subtypes = args
-        tup = cast_hint(tuple[Any, ...], value)
-        if len(subtypes) == len(tup):
-            return all(
-                safe_isinstance(v, t) for v, t in zip(tup, subtypes, strict=False)
-            )
-        if len(subtypes) == 2 and subtypes[1] is Ellipsis:  # noqa: PLR2004
-            return all(safe_isinstance(v, subtypes[0]) for v in tup)
-        return False
-
-    return True  # e.g., other typing origins like set[], Iterable[]
-
-
-def safe_isinstance(value: Any, expected_type: Any) -> bool:  # noqa: PLR0911
-    """Like isinstance(), but safe for TypedDicts and typing generics.
-
-    Handles:
-      - typing.Union, Optional, Any
-      - typing.NotRequired
-      - TypedDict subclasses
-      - list[...] with inner types
-      - Defensive fallback for exotic typing constructs
-    """
-    # --- Always allow Any ---
-    if expected_type is Any:
-        return True
-
-    origin = get_origin(expected_type)
-    args = get_args(expected_type)
-
-    # --- Handle NotRequired (extract inner type) ---
-    if origin is NotRequired:
-        # NotRequired[str] → validate as str
-        if args:
-            return safe_isinstance(value, args[0])
-        return True
-
-    # --- Handle Literals explicitly ---
-    if origin is Literal:
-        # Literal["x", "y"] → True if value equals any of the allowed literals
-        return value in args
-
-    # --- Handle Unions (includes Optional) ---
-    if origin in {Union, UnionType}:
-        # e.g. Union[str, int]
-        return any(safe_isinstance(value, t) for t in args)
-
-    # --- Handle special case: TypedDicts ---
-    try:
-        if (
-            isinstance(expected_type, type)
-            and hasattr(expected_type, "__annotations__")
-            and hasattr(expected_type, "__total__")
-        ):
-            # Treat TypedDict-like as dict
-            return isinstance(value, dict)
-    except TypeError:
-        # Not a class — skip
-        pass
-
-    # --- Handle generics like list[str], dict[str, int] ---
-    if origin:
-        return _isinstance_generics(value, origin, args)
-
-    # --- Fallback for simple types ---
-    try:
-        return isinstance(value, expected_type)
-    except TypeError:
-        # Non-type or strange typing construct
-        return False
-
-
-# === serger.meta ===
-# src/serger/meta.py
-
-"""Centralized program identity constants for Serger."""
-
-
-_BASE = "serger"
-
-# CLI script name (the executable or `poetry run` entrypoint)
-PROGRAM_SCRIPT = _BASE
-
-# config file name
-PROGRAM_CONFIG = _BASE
-
-# Human-readable name for banners, help text, etc.
-PROGRAM_DISPLAY = _BASE.replace("-", " ").title()
-
-# Python package / import name
-PROGRAM_PACKAGE = _BASE.replace("-", "_")
-
-# Environment variable prefix (used for <APP>_BUILD_LOG_LEVEL, etc.)
-PROGRAM_ENV = _BASE.replace("-", "_").upper()
-
-# Short tagline or __DESCRIPTION for help screens and metadata
-DESCRIPTION = "Stitch your module into a single file."
-
-
-@dataclass(frozen=True)
-class Metadata:
-    """Lightweight result from get_metadata(), containing version and commit info."""
-
-    version: str
-    commit: str
-
-    def __str__(self) -> str:
-        return f"{self.version} ({self.commit})"
-
-
-# === serger.utils.utils_validation ===
-# src/serger/utils/utils_validation.py
-
-
-def validate_required_keys(
-    config: dict[str, Any] | Any,
-    required_keys: set[str],
-    param_name: str,
-) -> None:
-    """Validate that a config dict contains all required keys.
-
-    Args:
-        config: The config dict to validate (TypedDict or dict)
-        required_keys: Set of required key names
-        param_name: Name of the parameter (for error messages)
-
-    Raises:
-        TypeError: If any required keys are missing
-    """
-    if not required_keys:
-        return
-
-    # TypedDict is a dict at runtime, but type checkers need help
-    config_dict = cast("dict[str, Any]", config)
-    missing = required_keys - config_dict.keys()
-    if missing:
-        missing_str = ", ".join(sorted(missing))
-        xmsg = (
-            f"Missing required keys in {param_name}: {missing_str}. "
-            f"Required keys: {', '.join(sorted(required_keys))}"
-        )
-        raise TypeError(xmsg)
-
-
-# === serger.constants ===
-# src/serger/constants.py
-"""Central constants used across the project."""
-
-
-RUNTIME_MODES = {
-    "standalone",  # single stitched file
-    "installed",  # poetry-installed / pip-installed / importable
-    "zipapp",  # .pyz bundle
-}
-
-# --- env keys ---
-DEFAULT_ENV_LOG_LEVEL: str = "LOG_LEVEL"
-DEFAULT_ENV_RESPECT_GITIGNORE: str = "RESPECT_GITIGNORE"
-DEFAULT_ENV_WATCH_INTERVAL: str = "WATCH_INTERVAL"
-DEFAULT_ENV_DISABLE_BUILD_TIMESTAMP: str = "DISABLE_BUILD_TIMESTAMP"
-
-# --- program defaults ---
-DEFAULT_LOG_LEVEL: str = "info"
-DEFAULT_WATCH_INTERVAL: float = 1.0  # seconds
-DEFAULT_RESPECT_GITIGNORE: bool = True
-
-# --- config defaults ---
-DEFAULT_STRICT_CONFIG: bool = True
-DEFAULT_OUT_DIR: str = "dist"
-DEFAULT_DRY_RUN: bool = False
-DEFAULT_USE_PYPROJECT_METADATA: bool = True
-
-# Import handling defaults keyed by stitch mode
-# These defaults are chosen based on how each stitching mode works:
-
-# INTERNAL_IMPORTS:
-#   - "raw": "force_strip" - Raw mode concatenates all files into a single namespace.
-#     Internal imports (e.g., "from .utils import helper") are stripped because all
-#     code is in the same namespace and can reference each other directly.
-#   - "class": "assign" - Class mode wraps each module in a class namespace.
-#     Internal imports must be transformed to class attribute access (e.g.,
-#     "from .utils import helper" becomes "helper = _Module_utils.helper").
-#     The "assign" mode handles this transformation automatically.
-#   - "exec": "keep" - Exec mode uses exec() with separate module objects in
-#     sys.modules, each with proper __package__ attributes. Relative imports work
-#     correctly in this setup, so they should be kept as-is.
-DEFAULT_INTERNAL_IMPORTS: dict[str, str] = {
-    "raw": "force_strip",
-    "class": "assign",
-    "exec": "keep",
-}
-
-# EXTERNAL_IMPORTS:
-#   - All modes use "top" - External imports (e.g., "import os", "from pathlib
-#     import Path") must be available at module level for all stitching modes.
-#     Hoisting them to the top ensures they're accessible throughout the stitched
-#     file, whether code is concatenated (raw), wrapped in classes (class), or
-#     executed in separate namespaces (exec).
-DEFAULT_EXTERNAL_IMPORTS: dict[str, str] = {
-    "raw": "top",
-    "class": "top",
-    "exec": "top",
-}
-DEFAULT_STITCH_MODE: str = "raw"  # Raw concatenation (default stitching mode)
-DEFAULT_MODULE_MODE: str = "multi"  # Generate shims for all detected packages
-DEFAULT_SHIM: str = "all"  # Generate shims for all modules (default shim setting)
-DEFAULT_COMMENTS_MODE: str = "keep"  # Keep all comments (default comments mode)
-DEFAULT_DOCSTRING_MODE: str = "keep"  # Keep all docstrings (default docstring mode)
-DEFAULT_MODULE_BASES: list[str] = [
-    "src",
-    "lib",
-    "packages",
-]  # Default directories to search for packages
-DEFAULT_MAIN_MODE: str = "auto"  # Automatically detect and generate __main__ block
-DEFAULT_MAIN_NAME: str | None = None  # Auto-detect main function (default)
-DEFAULT_DISABLE_BUILD_TIMESTAMP: bool = False  # Use real timestamps by default
-BUILD_TIMESTAMP_PLACEHOLDER: str = "<build-timestamp>"  # Placeholder
-DEFAULT_LICENSE_FALLBACK: str = (
-    "All rights reserved. See additional license files if distributed "
-    "alongside this file for additional terms."
-)
-
-# --- post-processing defaults ---
-DEFAULT_CATEGORY_ORDER: list[str] = ["static_checker", "formatter", "import_sorter"]
-
-# Type: dict[str, dict[str, Any]] - matches PostCategoryConfig structure
-# All tool commands are defined in tools dict for consistency (supports custom labels)
-# Note: This is the raw default structure; it gets resolved to
-# PostCategoryConfigResolved
-DEFAULT_CATEGORIES: dict[str, dict[str, Any]] = {
-    "static_checker": {
-        "enabled": True,
-        "priority": ["ruff"],
-        "tools": {
-            "ruff": {
-                "args": ["check", "--fix"],
-            },
-        },
-    },
-    "formatter": {
-        "enabled": True,
-        "priority": ["ruff", "black"],
-        "tools": {
-            "ruff": {
-                "args": ["format"],
-            },
-            "black": {
-                "args": ["format"],
-            },
-        },
-    },
-    "import_sorter": {
-        "enabled": True,
-        "priority": ["ruff", "isort"],
-        "tools": {
-            "ruff": {
-                "args": ["check", "--select", "I", "--fix"],
-            },
-            "isort": {
-                "args": ["--fix"],
-            },
-        },
-    },
-}
+# === apathetic_schema.__init__ ===
+"""Apathetic schema package."""
+
+
+__all__ = [
+    # schema
+    "SchemaErrorAggregator",
+    "ValidationSummary",
+    "check_schema_conformance",
+    "collect_msg",
+    "flush_schema_aggregators",
+    "warn_keys_once",
+]
 
 
 # === serger.config.config_types ===
@@ -2098,10 +4843,21 @@ class RootConfig(TypedDict, total=False):
     #   Each location value can be "keep", "strip", or "public"
     #   Omitted locations default to "keep"
     docstring_mode: DocstringMode
-    # Module bases: ordered list of directories where packages can be found
+    # Source bases: ordered list of directories where packages can be found
     # - str: Single directory (convenience, converted to list[str] on resolve)
     # - list[str]: Ordered list of directories (default: ["src", "lib", "packages"])
-    module_bases: str | list[str]
+    source_bases: str | list[str]
+    # Installed packages bases: ordered list of directories where installed packages
+    # can be found (for "follow the imports" stitching)
+    # - str: Single directory (convenience, converted to list[str] on resolve)
+    # - list[str]: Ordered list of directories (default: auto-discovered if enabled)
+    installed_bases: NotRequired[str | list[str]]
+    # Auto-discover installed packages: whether to automatically discover
+    # installed package roots (default: True)
+    auto_discover_installed_packages: NotRequired[bool]
+    # Include installed dependencies: whether to include installed dependencies
+    # in "follow the imports" stitching (default: False)
+    include_installed_dependencies: NotRequired[bool]
     # Main function configuration
     # - "none": Don't generate __main__ block
     # - "auto": Automatically detect and generate __main__ block (default)
@@ -2160,9 +4916,16 @@ class RootConfigResolved(TypedDict):
     module_actions: list[ModuleActionFull]
     comments_mode: CommentsMode  # How to handle comments in stitched output
     docstring_mode: DocstringMode  # How to handle docstrings in stitched output
-    # Module bases: ordered list of directories where packages can be found
+    # Source bases: ordered list of directories where packages can be found
     # (always present, resolved to list[str])
-    module_bases: list[str]
+    source_bases: list[str]
+    # Installed packages bases: ordered list of directories where installed packages
+    # can be found (always present, resolved to list[str])
+    installed_bases: list[str]
+    # Auto-discover installed packages (always present, resolved with defaults)
+    auto_discover_installed_packages: bool
+    # Include installed dependencies (always present, resolved with defaults)
+    include_installed_dependencies: bool
     # Main function configuration (always present, resolved with defaults)
     main_mode: MainMode
     # Main function name specification (always present, resolved with defaults)
@@ -2171,526 +4934,164 @@ class RootConfigResolved(TypedDict):
     disable_build_timestamp: bool
 
 
-# === serger.apathetic_utils.files ===
-# src/serger/utils/utils_files.py
+# === serger.constants ===
+# src/serger/constants.py
+"""Central constants used across the project."""
+
+
+RUNTIME_MODES = {
+    "standalone",  # single stitched file
+    "installed",  # poetry-installed / pip-installed / importable
+    "zipapp",  # .pyz bundle
+}
+
+# --- env keys ---
+DEFAULT_ENV_LOG_LEVEL: str = "LOG_LEVEL"
+DEFAULT_ENV_RESPECT_GITIGNORE: str = "RESPECT_GITIGNORE"
+DEFAULT_ENV_WATCH_INTERVAL: str = "WATCH_INTERVAL"
+DEFAULT_ENV_DISABLE_BUILD_TIMESTAMP: str = "DISABLE_BUILD_TIMESTAMP"
+
+# --- program defaults ---
+DEFAULT_LOG_LEVEL: str = "info"
+DEFAULT_WATCH_INTERVAL: float = 1.0  # seconds
+DEFAULT_RESPECT_GITIGNORE: bool = True
+
+# --- config defaults ---
+DEFAULT_STRICT_CONFIG: bool = True
+DEFAULT_OUT_DIR: str = "dist"
+DEFAULT_DRY_RUN: bool = False
+DEFAULT_USE_PYPROJECT_METADATA: bool = True
+
+# Import handling defaults keyed by stitch mode
+# These defaults are chosen based on how each stitching mode works:
+
+# INTERNAL_IMPORTS:
+#   - "raw": "force_strip" - Raw mode concatenates all files into a single namespace.
+#     Internal imports (e.g., "from .utils import helper") are stripped because all
+#     code is in the same namespace and can reference each other directly.
+#   - "class": "assign" - Class mode wraps each module in a class namespace.
+#     Internal imports must be transformed to class attribute access (e.g.,
+#     "from .utils import helper" becomes "helper = _Module_utils.helper").
+#     The "assign" mode handles this transformation automatically.
+#   - "exec": "keep" - Exec mode uses exec() with separate module objects in
+#     sys.modules, each with proper __package__ attributes. Relative imports work
+#     correctly in this setup, so they should be kept as-is.
+DEFAULT_INTERNAL_IMPORTS: dict[str, str] = {
+    "raw": "force_strip",
+    "class": "assign",
+    "exec": "keep",
+}
+
+# EXTERNAL_IMPORTS:
+#   - All modes use "top" - External imports (e.g., "import os", "from pathlib
+#     import Path") must be available at module level for all stitching modes.
+#     Hoisting them to the top ensures they're accessible throughout the stitched
+#     file, whether code is concatenated (raw), wrapped in classes (class), or
+#     executed in separate namespaces (exec).
+DEFAULT_EXTERNAL_IMPORTS: dict[str, str] = {
+    "raw": "top",
+    "class": "top",
+    "exec": "top",
+}
+DEFAULT_STITCH_MODE: str = "raw"  # Raw concatenation (default stitching mode)
+DEFAULT_MODULE_MODE: str = "multi"  # Generate shims for all detected packages
+DEFAULT_SHIM: str = "all"  # Generate shims for all modules (default shim setting)
+DEFAULT_COMMENTS_MODE: str = "keep"  # Keep all comments (default comments mode)
+DEFAULT_DOCSTRING_MODE: str = "keep"  # Keep all docstrings (default docstring mode)
+DEFAULT_SOURCE_BASES: list[str] = [
+    "src",
+    "lib",
+    "packages",
+]  # Default directories to search for packages
+DEFAULT_MAIN_MODE: str = "auto"  # Automatically detect and generate __main__ block
+DEFAULT_MAIN_NAME: str | None = None  # Auto-detect main function (default)
+DEFAULT_DISABLE_BUILD_TIMESTAMP: bool = False  # Use real timestamps by default
+BUILD_TIMESTAMP_PLACEHOLDER: str = "<build-timestamp>"  # Placeholder
+DEFAULT_LICENSE_FALLBACK: str = (
+    "All rights reserved. See additional license files if distributed "
+    "alongside this file for additional terms."
+)
+
+# --- post-processing defaults ---
+DEFAULT_CATEGORY_ORDER: list[str] = ["static_checker", "formatter", "import_sorter"]
+
+# Type: dict[str, dict[str, Any]] - matches PostCategoryConfig structure
+# All tool commands are defined in tools dict for consistency (supports custom labels)
+# Note: This is the raw default structure; it gets resolved to
+# PostCategoryConfigResolved
+DEFAULT_CATEGORIES: dict[str, dict[str, Any]] = {
+    "static_checker": {
+        "enabled": True,
+        "priority": ["ruff"],
+        "tools": {
+            "ruff": {
+                "args": ["check", "--fix"],
+            },
+        },
+    },
+    "formatter": {
+        "enabled": True,
+        "priority": ["ruff", "black"],
+        "tools": {
+            "ruff": {
+                "args": ["format"],
+            },
+            "black": {
+                "args": ["format"],
+            },
+        },
+    },
+    "import_sorter": {
+        "enabled": True,
+        "priority": ["ruff", "isort"],
+        "tools": {
+            "ruff": {
+                "args": ["check", "--select", "I", "--fix"],
+            },
+            "isort": {
+                "args": ["--fix"],
+            },
+        },
+    },
+}
 
 
-def _strip_jsonc_comments(text: str) -> str:  # noqa: PLR0912
-    """Strip comments from JSONC while preserving string contents.
+# === serger.meta ===
+# src/serger/meta.py
 
-    Handles //, #, and /* */ comments without modifying content inside strings.
-    """
-    result: list[str] = []
-    in_string = False
-    in_escape = False
-    i = 0
-    while i < len(text):
-        ch = text[i]
+"""Centralized program identity constants for Serger."""
 
-        # Handle escape sequences in strings
-        if in_escape:
-            result.append(ch)
-            in_escape = False
-            i += 1
-            continue
 
-        if ch == "\\" and in_string:
-            result.append(ch)
-            in_escape = True
-            i += 1
-            continue
+_BASE = "serger"
 
-        # Toggle string state
-        if ch in ('"', "'") and (not in_string or text[i - 1 : i] != "\\"):
-            in_string = not in_string
-            result.append(ch)
-            i += 1
-            continue
+# CLI script name (the executable or `poetry run` entrypoint)
+PROGRAM_SCRIPT = _BASE
 
-        # If in a string, keep everything
-        if in_string:
-            result.append(ch)
-            i += 1
-            continue
+# config file name
+PROGRAM_CONFIG = _BASE
 
-        # Outside strings: handle comments
-        # Check for // comment (but skip URLs like http://)
-        if (
-            ch == "/"
-            and i + 1 < len(text)
-            and text[i + 1] == "/"
-            and not (i > 0 and text[i - 1] == ":")
-        ):
-            # Skip to end of line
-            while i < len(text) and text[i] != "\n":
-                i += 1
-            if i < len(text):
-                result.append("\n")
-                i += 1
-            continue
+# Human-readable name for banners, help text, etc.
+PROGRAM_DISPLAY = _BASE.replace("-", " ").title()
 
-        # Check for # comment
-        if ch == "#":
-            # Skip to end of line
-            while i < len(text) and text[i] != "\n":
-                i += 1
-            if i < len(text):
-                result.append("\n")
-                i += 1
-            continue
+# Python package / import name
+PROGRAM_PACKAGE = _BASE.replace("-", "_")
 
-        # Check for block comments /* ... */
-        if ch == "/" and i + 1 < len(text) and text[i + 1] == "*":
-            # Skip to end of block comment
-            i += 2
-            while i + 1 < len(text):
-                if text[i] == "*" and text[i + 1] == "/":
-                    i += 2
-                    break
-                i += 1
-            continue
+# Environment variable prefix (used for <APP>_BUILD_LOG_LEVEL, etc.)
+PROGRAM_ENV = _BASE.replace("-", "_").upper()
 
-        # Regular character
-        result.append(ch)
-        i += 1
+# Short tagline or __DESCRIPTION for help screens and metadata
+DESCRIPTION = "Stitch your module into a single file."
 
-    return "".join(result)
 
+@dataclass(frozen=True)
+class Metadata:
+    """Lightweight result from get_metadata(), containing version and commit info."""
 
-def load_toml(path: Path, *, required: bool = False) -> dict[str, Any] | None:
-    """Load and parse a TOML file, supporting Python 3.10 and 3.11+.
+    version: str
+    commit: str
 
-    Uses:
-    - `tomllib` (Python 3.11+ standard library)
-    - `tomli` (required for Python 3.10 - must be installed separately)
-
-    Args:
-        path: Path to TOML file
-        required: If True, raise RuntimeError when tomli is missing on Python 3.10.
-                  If False, return None when unavailable (caller handles gracefully).
-
-    Returns:
-        Parsed TOML data as a dictionary, or None if unavailable and not required
-
-    Raises:
-        FileNotFoundError: If the file doesn't exist
-        RuntimeError: If required=True and neither tomllib nor tomli is available
-        ValueError: If the file cannot be parsed
-    """
-    if not path.exists():
-        xmsg = f"TOML file not found: {path}"
-        raise FileNotFoundError(xmsg)
-
-    # Try tomllib (Python 3.11+)
-    try:
-        import tomllib  # type: ignore[import-not-found] # noqa: PLC0415
-
-        with path.open("rb") as f:
-            return tomllib.load(f)  # type: ignore[no-any-return]
-    except ImportError:
-        pass
-
-    # Try tomli (required for Python 3.10)
-    try:
-        import tomli  # type: ignore[import-not-found,unused-ignore] # noqa: PLC0415  # pyright: ignore[reportMissingImports]
-
-        with path.open("rb") as f:
-            return tomli.load(f)  # type: ignore[no-any-return,unused-ignore]  # pyright: ignore[reportUnknownReturnType]
-    except ImportError:
-        if required:
-            xmsg = (
-                "TOML parsing requires 'tomli' package on Python 3.10. "
-                "Install it with: pip install tomli, or disable pyproject.toml support "
-                "by setting 'use_pyproject_metadata: false' in your config."
-            )
-            raise RuntimeError(xmsg) from None
-        return None
-
-
-def load_jsonc(path: Path) -> dict[str, Any] | list[Any] | None:
-    """Load JSONC (JSON with comments and trailing commas)."""
-    logger = get_logger()
-    logger.trace(f"[load_jsonc] Loading from {path}")
-
-    if not path.exists():
-        xmsg = f"JSONC file not found: {path}"
-        raise FileNotFoundError(xmsg)
-
-    if not path.is_file():
-        xmsg = f"Expected a file: {path}"
-        raise ValueError(xmsg)
-
-    text = path.read_text(encoding="utf-8")
-    text = _strip_jsonc_comments(text)
-
-    # Remove trailing commas before } or ]
-    text = re.sub(r",(?=\s*[}\]])", "", text)
-
-    # Trim whitespace
-    text = text.strip()
-
-    if not text:
-        # Empty or only comments → interpret as "no config"
-        return None
-
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError as e:
-        xmsg = (
-            f"Invalid JSONC syntax in {path}:"
-            f" {e.msg} (line {e.lineno}, column {e.colno})"
-        )
-        raise ValueError(xmsg) from e
-
-    # Guard against scalar roots (invalid config structure)
-    if not isinstance(data, (dict, list)):
-        xmsg = f"Invalid JSONC root type: {type(data).__name__}"
-        raise ValueError(xmsg)  # noqa: TRY004
-
-    # narrow type
-    result = cast("dict[str, Any] | list[Any]", data)
-    logger.trace(
-        f"[load_jsonc] Loaded {type(result).__name__} with"
-        f" {len(result) if hasattr(result, '__len__') else 'N/A'} items"
-    )
-    return result
-
-
-# === serger.apathetic_utils.paths ===
-# src/serger/utils/utils_paths.py
-
-
-def normalize_path_string(raw: str) -> str:
-    r"""Normalize a user-supplied path string for cross-platform use.
-
-    Industry-standard (Git/Node/Python) rules:
-      - Treat both '/' and '\\' as valid separators and normalize all to '/'.
-      - Replace escaped spaces ('\\ ') with real spaces.
-      - Collapse redundant slashes (preserve protocol prefixes like 'file://').
-      - Never resolve '.' or '..' or touch the filesystem.
-      - Never raise for syntax; normalization is always possible.
-
-    This is the pragmatic cross-platform normalization strategy used by
-    Git, Node.js, and Python build tools.
-    This function is purely lexical — it normalizes syntax, not filesystem state.
-    """
-    logger = get_logger()
-    if not raw:
-        return ""
-
-    path = raw.strip()
-
-    # Handle escaped spaces (common shell copy-paste)
-    if "\\ " in path:
-        fixed = path.replace("\\ ", " ")
-        logger.warning("Normalizing escaped spaces in path: %r → %s", path, fixed)
-        path = fixed
-
-    # Normalize all backslashes to forward slashes
-    path = path.replace("\\", "/")
-
-    # Collapse redundant slashes (keep protocol //)
-    collapsed_slashes = re.sub(r"(?<!:)//+", "/", path)
-    if collapsed_slashes != path:
-        logger.trace("Collapsed redundant slashes: %r → %r", path, collapsed_slashes)
-        path = collapsed_slashes
-
-    return path
-
-
-def has_glob_chars(s: str) -> bool:
-    return any(c in s for c in "*?[]")
-
-
-def get_glob_root(pattern: str) -> Path:
-    """Return the non-glob portion of a path like 'src/**/*.txt'.
-
-    Normalizes paths to cross-platform.
-    """
-    if not pattern:
-        return Path()
-
-    # Normalize backslashes to forward slashes
-    normalized = normalize_path_string(pattern)
-
-    parts: list[str] = []
-    for part in Path(normalized).parts:
-        if re.search(r"[*?\[\]]", part):
-            break
-        parts.append(part)
-    return Path(*parts) if parts else Path()
-
-
-# === serger.apathetic_utils.matching ===
-# src/serger/utils/utils_matching.py
-
-
-@lru_cache(maxsize=512)
-def _compile_glob_recursive(pattern: str) -> re.Pattern[str]:
-    """
-    Compile a glob pattern to regex, backporting recursive '**' on Python < 3.11.
-    This translator handles literals, ?, *, **, and [] classes without relying on
-    slicing fnmatch.translate() output, avoiding unbalanced parentheses.
-    Always case-sensitive.
-    """
-
-    def _escape_lit(ch: str) -> str:
-        # Escape regex metacharacters
-        if ch in ".^$+{}[]|()\\":
-            return "\\" + ch
-        return ch
-
-    i = 0
-    n = len(pattern)
-    pieces: list[str] = []
-    while i < n:
-        ch = pattern[i]
-
-        # Character class: copy through closing ']'
-        if ch == "[":
-            j = i + 1
-            if j < n and pattern[j] in "!^":
-                j += 1
-            # allow leading ']' inside class as a literal
-            if j < n and pattern[j] == "]":
-                j += 1
-            while j < n and pattern[j] != "]":
-                j += 1
-            if j < n and pattern[j] == "]":
-                # whole class, keep as-is (regex already)
-                pieces.append(pattern[i : j + 1])
-                i = j + 1
-            else:
-                # unmatched '[', treat literally
-                pieces.append("\\[")
-                i += 1
-            continue
-
-        # Recursive glob
-        if ch == "*" and i + 1 < n and pattern[i + 1] == "*":
-            # Collapse a run of consecutive '*' to detect '**'
-            k = i + 2
-            while k < n and pattern[k] == "*":
-                k += 1
-            # Treat any run >= 2 as recursive
-            pieces.append(".*")
-            i = k
-            continue
-
-        # Single-segment glob
-        if ch == "*":
-            pieces.append("[^/]*")
-            i += 1
-            continue
-
-        # Single character
-        if ch == "?":
-            pieces.append("[^/]")
-            i += 1
-            continue
-
-        # Path separator or literal
-        pieces.append(_escape_lit(ch))
-        i += 1
-
-    inner = "".join(pieces)
-    return re.compile(f"(?s:{inner})\\Z")
-
-
-def fnmatchcase_portable(path: str, pattern: str) -> bool:
-    """
-    Case-sensitive glob pattern matching with Python 3.10 '**' backport.
-
-    Uses fnmatchcase (case-sensitive) as the base, with backported support
-    for recursive '**' patterns on Python 3.10.
-
-    Args:
-        path: The path to match against the pattern
-        pattern: The glob pattern to match
-
-    Returns:
-        True if the path matches the pattern, False otherwise.
-    """
-    if get_sys_version_info() >= (3, 11) or "**" not in pattern:
-        return fnmatchcase(path, pattern)
-    return bool(_compile_glob_recursive(pattern).match(path))
-
-
-def is_excluded_raw(  # noqa: PLR0911, PLR0912, PLR0915, C901
-    path: Path | str,
-    exclude_patterns: list[str],
-    root: Path | str,
-) -> bool:
-    """Smart matcher for normalized inputs.
-
-    - Treats 'path' as relative to 'root' unless already absolute.
-    - If 'root' is a file, match directly.
-    - Handles absolute or relative glob patterns.
-
-    Special behavior for patterns with '../':
-    Unlike rsync/ruff (which don't support '../' in exclude patterns),
-    serger allows patterns with '../' to explicitly match files outside
-    the exclude root. This enables config files in subdirectories to
-    exclude files elsewhere in the project. Patterns containing '../'
-    are resolved relative to the exclude root, then matched against
-    the absolute file path.
-
-    Note:
-    The function does not require `root` to exist; if it does not,
-    a debug message is logged and matching is purely path-based.
-    """
-    logger = get_logger()
-    root = Path(root).resolve()
-    path = Path(path)
-
-    logger.trace(
-        f"[is_excluded_raw] Checking path={path} against"
-        f" {len(exclude_patterns)} patterns"
-    )
-
-    # the callee really should deal with this, otherwise we might spam
-    if not Path(root).exists():
-        logger.debug("Exclusion root does not exist: %s", root)
-
-    # If the root itself is a file, treat that as a direct exclusion target.
-    if root.is_file():
-        # If the given path resolves exactly to that file, exclude it.
-        full_path = path if path.is_absolute() else (root.parent / path)
-        return full_path.resolve() == root.resolve()
-
-    # If no exclude patterns, nothing else to exclude
-    if not exclude_patterns:
-        return False
-
-    # Otherwise, treat as directory root.
-    full_path = path if path.is_absolute() else (root / path)
-    full_path = full_path.resolve()
-
-    # Try to get relative path for standard matching
-    try:
-        rel = str(full_path.relative_to(root)).replace("\\", "/")
-        path_outside_root = False
-    except ValueError:
-        # Path lies outside the root
-        path_outside_root = True
-        # For patterns starting with **/, we can still match against filename
-        # or absolute path. For other patterns, we need rel, so use empty string
-        # as fallback (won't match non-**/ patterns)
-        rel = ""
-
-    for pattern in exclude_patterns:
-        pat = pattern.replace("\\", "/")
-
-        # Handle patterns starting with **/ - these should match even for files
-        # outside the exclude root (matching rsync/ruff behavior)
-        if pat.startswith("**/"):
-            # For **/ patterns, match against:
-            # 1. The file's name (e.g., **/__init__.py matches any __init__.py)
-            # 2. The absolute path (for more complex patterns)
-            file_name = full_path.name
-            abs_path_str = str(full_path).replace("\\", "/")
-
-            # Remove **/ prefix and match against filename
-            pattern_suffix = pat[3:]  # Remove "**/" prefix
-            if fnmatchcase_portable(file_name, pattern_suffix):
-                logger.trace(
-                    f"[is_excluded_raw] MATCHED **/ pattern {pattern!r} "
-                    f"against filename {file_name}"
-                )
-                return True
-
-            # Also try matching against absolute path
-            # (for patterns like **/subdir/file.py)
-            if fnmatchcase_portable(abs_path_str, pat):
-                logger.trace(
-                    f"[is_excluded_raw] MATCHED **/ pattern {pattern!r} "
-                    f"against absolute path"
-                )
-                return True
-
-            # Continue to next pattern if we're outside root and **/ didn't match
-            if path_outside_root:
-                continue
-
-        # Handle patterns with ../ - serger-specific behavior to allow
-        # patterns that explicitly navigate outside the exclude root
-        if "../" in pat or pat.startswith("../"):
-            # Resolve the pattern relative to the exclude root
-            # We need to handle glob patterns (with **) by resolving the base
-            # path and preserving the glob part
-            try:
-                abs_path_str = str(full_path).replace("\\", "/")
-
-                # If pattern contains glob chars, split and resolve carefully
-                if "*" in pat or "?" in pat or "[" in pat:
-                    # Find the first glob character to split base from pattern
-                    glob_chars = ["*", "?", "["]
-                    first_glob_pos = min(
-                        (pat.find(c) for c in glob_chars if c in pat),
-                        default=len(pat),
-                    )
-
-                    # Split into base path (before glob) and pattern part
-                    base_part = pat[:first_glob_pos].rstrip("/")
-                    pattern_part = pat[first_glob_pos:]
-
-                    # Resolve the base part relative to root
-                    if base_part:
-                        resolved_base = (root / base_part).resolve()
-                        resolved_pattern_str = (
-                            str(resolved_base).replace("\\", "/") + "/" + pattern_part
-                        )
-                    else:
-                        # Pattern starts with glob, resolve root and prepend pattern
-                        resolved_pattern_str = (
-                            str(root).replace("\\", "/") + "/" + pattern_part
-                        )
-                else:
-                    # No glob chars, resolve normally
-                    resolved_pattern = (root / pat).resolve()
-                    resolved_pattern_str = str(resolved_pattern).replace("\\", "/")
-
-                # Match the resolved pattern against the absolute file path
-                if fnmatchcase_portable(abs_path_str, resolved_pattern_str):
-                    logger.trace(
-                        f"[is_excluded_raw] MATCHED ../ pattern {pattern!r} "
-                        f"(resolved to {resolved_pattern_str})"
-                    )
-                    return True
-            except (ValueError, RuntimeError):
-                # Pattern resolves outside filesystem or invalid, skip
-                logger.trace(
-                    f"[is_excluded_raw] Could not resolve ../ pattern {pattern!r}"
-                )
-
-        # If path is outside root and pattern doesn't start with **/ or
-        # contain ../, skip
-        if path_outside_root:
-            continue
-
-        logger.trace(f"[is_excluded_raw] Testing pattern {pattern!r} against {rel}")
-
-        # If pattern is absolute and under root, adjust to relative form
-        if pat.startswith(str(root)):
-            try:
-                pat_rel = str(Path(pat).relative_to(root)).replace("\\", "/")
-            except ValueError:
-                pat_rel = pat  # not under root; treat as-is
-            if fnmatchcase_portable(rel, pat_rel):
-                logger.trace(f"[is_excluded_raw] MATCHED pattern {pattern!r}")
-                return True
-
-        # Otherwise treat pattern as relative glob
-        if fnmatchcase_portable(rel, pat):
-            logger.trace(f"[is_excluded_raw] MATCHED pattern {pattern!r}")
-            return True
-
-        # Optional directory-only semantics
-        if pat.endswith("/") and rel.startswith(pat.rstrip("/") + "/"):
-            logger.trace(f"[is_excluded_raw] MATCHED pattern {pattern!r}")
-            return True
-
-    return False
+    def __str__(self) -> str:
+        return f"{self.version} ({self.commit})"
 
 
 # === serger.logs ===
@@ -2700,8 +5101,8 @@ def is_excluded_raw(  # noqa: PLR0911, PLR0912, PLR0915, C901
 # --- Our application logger -----------------------------------------------------
 
 
-class AppLogger(ApatheticCLILogger):
-    def determine_log_level(
+class AppLogger(Logger):
+    def determineLogLevel(  # noqa: N802
         self,
         *,
         args: argparse.Namespace | None = None,
@@ -2736,17 +5137,17 @@ class AppLogger(ApatheticCLILogger):
 logging.setLoggerClass(AppLogger)
 
 # Force registration of TRACE and SILENT levels
-AppLogger.extend_logging_module()
+AppLogger.extendLoggingModule()
 
 # Register log level environment variables and default
 # This must happen before any loggers are created so they use the registered values
-register_log_level_env_vars(
+registerLogLevelEnvVars(
     [f"{PROGRAM_ENV}_{DEFAULT_ENV_LOG_LEVEL}", DEFAULT_ENV_LOG_LEVEL]
 )
-register_default_log_level(DEFAULT_LOG_LEVEL)
+registerDefaultLogLevel(DEFAULT_LOG_LEVEL)
 
-# Register the logger name so get_logger() can find it
-register_logger_name(PROGRAM_PACKAGE)
+# Register the logger name so getLogger() can find it
+registerLogger(PROGRAM_PACKAGE)
 
 # Create the app logger instance via logging.getLogger()
 # This ensures it's registered with the logging module and can be retrieved
@@ -2757,21 +5158,843 @@ _APP_LOGGER = cast("AppLogger", logging.getLogger(PROGRAM_PACKAGE))
 # --- Convenience utils ---------------------------------------------------------
 
 
-def get_app_logger() -> AppLogger:
+def getAppLogger() -> AppLogger:  # noqa: N802
     """Return the configured app logger.
 
     This is the app-specific logger getter that returns AppLogger type.
-    Use this in application code instead of utils_logs.getLogger() for
+    Use this in application code instead of utils_logs.get_logger() for
     better type hints.
     """
-    TEST_TRACE(
-        "get_app_logger() called",
+    trace = makeSafeTrace()
+    trace(
+        "getAppLogger() called",
         f"id={id(_APP_LOGGER)}",
         f"name={_APP_LOGGER.name}",
-        f"level={_APP_LOGGER.level_name}",
+        f"level={_APP_LOGGER.levelName}",
         f"handlers={[type(h).__name__ for h in _APP_LOGGER.handlers]}",
     )
     return _APP_LOGGER
+
+
+# === serger.config.config_validate ===
+# src/serger/config/config_validate.py
+
+
+# --- constants ------------------------------------------------------
+
+DRYRUN_KEYS = {"dry-run", "dry_run", "dryrun", "no-op", "no_op", "noop"}
+DRYRUN_MSG = (
+    "Ignored config key(s) {keys} {ctx}: this tool has no config option for it. "
+    "Use the CLI flag '--dry-run' instead."
+)
+
+ROOT_ONLY_KEYS = {"watch_interval"}
+ROOT_ONLY_MSG = "Ignored {keys} {ctx}: these options only apply at the root level."
+
+# Field-specific type examples for better error messages
+# Dict format: {field_pattern: example_value}
+# Wildcard patterns (with *) are supported for matching multiple fields
+FIELD_EXAMPLES: dict[str, str] = {
+    "root.include": '["src/", "lib/"]',
+    "root.out": '"dist/script.py"',
+    "root.display_name": '"MyProject"',
+    "root.description": '"A description of the project"',
+    "root.repo": '"https://github.com/user/project"',
+    "root.internal_imports": '"force_strip"',
+    "root.external_imports": '"top"',
+    "root.watch_interval": "1.5",
+    "root.log_level": '"debug"',
+    "root.strict_config": "true",
+}
+
+
+# ---------------------------------------------------------------------------
+# main validator
+# ---------------------------------------------------------------------------
+
+
+def _set_valid_and_return(
+    *,
+    flush: bool = True,
+    summary: ValidationSummary,  # could be modified
+    agg: SchemaErrorAggregator,  # could be modified
+) -> ValidationSummary:
+    if flush:
+        flush_schema_aggregators(summary=summary, agg=agg)
+    summary.valid = not summary.errors and not summary.strict_warnings
+    return summary
+
+
+def _validate_root(
+    parsed_cfg: dict[str, Any],
+    *,
+    strict_arg: bool | None,
+    summary: ValidationSummary,  # modified
+    agg: SchemaErrorAggregator,  # modified
+) -> ValidationSummary | None:
+    logger = getAppLogger()
+    logger.trace(f"[validate_root] Validating root with {len(parsed_cfg)} keys")
+
+    strict_config: bool = summary.strict
+    # --- Determine strictness from arg or root config or default ---
+    strict_from_root: Any = parsed_cfg.get("strict_config")
+    if strict_arg is not None and strict_arg:
+        strict_config = strict_arg
+    elif strict_arg is None and isinstance(strict_from_root, bool):
+        strict_config = strict_from_root
+
+    if strict_config:
+        summary.strict = True
+
+    # --- Validate root-level keys ---
+    root_schema = schema_from_typeddict(RootConfig)
+    prewarn_root: set[str] = set()
+    ok, found = warn_keys_once(
+        "dry-run",
+        DRYRUN_KEYS,
+        parsed_cfg,
+        "in top-level configuration",
+        DRYRUN_MSG,
+        strict_config=strict_config,
+        summary=summary,
+        agg=agg,
+    )
+    prewarn_root |= found
+
+    ok = check_schema_conformance(
+        parsed_cfg,
+        root_schema,
+        "in top-level configuration",
+        strict_config=strict_config,
+        summary=summary,
+        prewarn=prewarn_root,
+        ignore_keys={"builds"},
+        base_path="root",
+        field_examples=FIELD_EXAMPLES,
+    )
+    if not ok and not (summary.errors or summary.strict_warnings):
+        collect_msg(
+            "Top-level configuration invalid.",
+            strict=True,
+            summary=summary,
+            is_error=True,
+        )
+
+    return None
+
+
+def _validate_builds(
+    parsed_cfg: dict[str, Any],
+    *,
+    strict_arg: bool | None,  # noqa: ARG001
+    summary: ValidationSummary,  # modified
+    agg: SchemaErrorAggregator,  # modified
+) -> ValidationSummary | None:
+    """Validate that 'builds' key is not present (multi-build not supported)."""
+    logger = getAppLogger()
+    logger.trace("[validate_builds] Checking for unsupported 'builds' key")
+
+    if "builds" in parsed_cfg:
+        collect_msg(
+            "The 'builds' key is not supported. "
+            "Please use a single flat configuration object with all options "
+            "at the root level.",
+            strict=True,
+            summary=summary,
+            is_error=True,
+        )
+        return _set_valid_and_return(summary=summary, agg=agg)
+
+    return None
+
+
+def validate_config(
+    parsed_cfg: dict[str, Any],
+    *,
+    strict: bool | None = None,
+) -> ValidationSummary:
+    """Validate normalized config. Returns True if valid.
+
+    strict=True  →  warnings become fatal, but still listed separately
+    strict=False →  warnings remain non-fatal
+
+    The `strict_config` key in the root config (and optionally in each build)
+    controls strictness. CLI flags are not considered.
+
+    Returns a ValidationSummary object.
+    """
+    logger = getAppLogger()
+    logger.trace(f"[validate_config] Starting validation (strict={strict})")
+
+    summary = ValidationSummary(
+        valid=True,
+        errors=[],
+        strict_warnings=[],
+        warnings=[],
+        strict=DEFAULT_STRICT_CONFIG,
+    )
+    agg: SchemaErrorAggregator = {}
+
+    # --- Validate root structure ---
+    ret = _validate_root(
+        parsed_cfg,
+        strict_arg=strict,
+        summary=summary,
+        agg=agg,
+    )
+    if ret is not None:
+        return ret
+
+    # --- Validate builds structure ---
+    ret = _validate_builds(parsed_cfg, strict_arg=strict, summary=summary, agg=agg)
+    if ret is not None:
+        return ret
+
+    # --- finalize result ---
+    return _set_valid_and_return(
+        summary=summary,
+        agg=agg,
+    )
+
+
+# === serger.config.config_loader ===
+# src/serger/config/config_loader.py
+
+
+def can_run_configless(args: argparse.Namespace) -> bool:
+    """To run without config we need at least --include
+    or --add-include or a positional include.
+
+    Since this is pre-args normalization we need to still check
+    positionals and not assume the positional out doesn't improperly
+    greed grab the include.
+    """
+    return bool(
+        getattr(args, "include", None)
+        or getattr(args, "add_include", None)
+        or getattr(args, "positional_include", None)
+        or getattr(args, "positional_out", None),
+    )
+
+
+def find_config(
+    args: argparse.Namespace,
+    cwd: Path,
+    *,
+    missing_level: str = "error",
+) -> Path | None:
+    """Locate a configuration file.
+
+    missing_level: log-level for failing to find a configuration file.
+
+    Search order:
+      1. Explicit path from CLI (--config)
+      2. Default candidates in the current working directory:
+         .{PROGRAM_CONFIG}.py, .{PROGRAM_CONFIG}.jsonc, .{PROGRAM_CONFIG}.json
+
+    Returns the first matching path, or None if no config was found.
+    """
+    # NOTE: We only have early no-config Log-Level
+    logger = getAppLogger()
+
+    try:
+        getLevelNumber(missing_level)
+    except ValueError:
+        logger.error(  # noqa: TRY400
+            "Invalid log level name in find_config(): %s", missing_level
+        )
+        missing_level = "error"
+
+    # --- 1. Explicit config path ---
+    if getattr(args, "config", None):
+        config = Path(args.config).expanduser().resolve()
+        logger.trace(f"[find_config] Checking explicit path: {config}")
+        if not config.exists():
+            # Explicit path → hard failure
+            xmsg = f"Specified config file not found: {config}"
+            raise FileNotFoundError(xmsg)
+        if config.is_dir():
+            xmsg = f"Specified config path is a directory, not a file: {config}"
+            raise ValueError(xmsg)
+        return config
+
+    # --- 2. Default candidate files (search current dir and parents) ---
+    # Search from cwd up to filesystem root, returning first match (closest to cwd)
+    current = cwd
+    candidate_names = [
+        f".{PROGRAM_CONFIG}.py",
+        f".{PROGRAM_CONFIG}.jsonc",
+        f".{PROGRAM_CONFIG}.json",
+    ]
+    found: list[Path] = []
+    while True:
+        for name in candidate_names:
+            candidate = current / name
+            if candidate.exists():
+                found.append(candidate)
+        if found:
+            # Found at least one config file at this level
+            break
+        parent = current.parent
+        if parent == current:  # Reached filesystem root
+            break
+        current = parent
+
+    if not found:
+        # Expected absence — soft failure (continue)
+        logger.logDynamic(missing_level, f"No config file found in {cwd} or parents")
+        return None
+
+    # --- 3. Handle multiple matches at same level (prefer .py > .jsonc > .json) ---
+    if len(found) > 1:
+        # Prefer .py, then .jsonc, then .json
+        priority = {".py": 0, ".jsonc": 1, ".json": 2}
+        found_sorted = sorted(found, key=lambda p: priority.get(p.suffix, 99))
+        names = ", ".join(p.name for p in found_sorted)
+        logger.warning(
+            "Multiple config files detected (%s); using %s.",
+            names,
+            found_sorted[0].name,
+        )
+        return found_sorted[0]
+    return found[0]
+
+
+def load_config(config_path: Path) -> dict[str, Any] | list[Any] | None:
+    """Load configuration data from a file.
+
+    Supports:
+      - Python configs: .py files exporting either `config` or `includes`
+      - JSON/JSONC configs: .json, .jsonc files
+
+    Returns:
+        The raw object defined in the config (dict, list, or None).
+        Returns None for intentionally empty configs
+          (e.g. empty files or `config = None`).
+
+    Raises:
+        ValueError if a .py config defines none of the expected variables.
+
+    """
+    # NOTE: We only have early no-config Log-Level
+    logger = getAppLogger()
+    logger.trace(f"[load_config] Loading from {config_path} ({config_path.suffix})")
+
+    # --- Python config ---
+    if config_path.suffix == ".py":
+        config_globals: dict[str, Any] = {}
+
+        # Allow local imports in Python configs (e.g. from ./helpers import foo)
+        # This is safe because configs are trusted user code.
+        parent_dir = str(config_path.parent)
+        added_to_sys_path = parent_dir not in sys.path
+        if added_to_sys_path:
+            sys.path.insert(0, parent_dir)
+
+        # Execute the python config file
+        try:
+            source = config_path.read_text(encoding="utf-8")
+            exec(compile(source, str(config_path), "exec"), config_globals)  # noqa: S102
+            logger.trace(
+                f"[EXEC] globals after exec: {list(config_globals.keys())}",
+            )
+        except Exception as e:
+            tb = traceback.format_exc()
+            xmsg = (
+                f"Error while executing Python config: {config_path.name}\n"
+                f"{type(e).__name__}: {e}\n{tb}"
+            )
+            # Raise a generic runtime error for main() to catch and print cleanly
+            raise RuntimeError(xmsg) from e
+        finally:
+            # Only remove if we actually inserted it
+            if added_to_sys_path and sys.path[0] == parent_dir:
+                sys.path.pop(0)
+
+        for key in ("config", "includes"):
+            if key in config_globals:
+                result = config_globals[key]
+                if not isinstance(result, (dict, list, type(None))):
+                    xmsg = (
+                        f"{key} in {config_path.name} must be a dict, list, or None"
+                        f", not {type(result).__name__}"
+                    )
+                    raise TypeError(xmsg)
+
+                # Explicitly narrow the loaded config to its expected union type.
+                return cast("dict[str, Any] | list[Any] | None", result)
+
+        xmsg = f"{config_path.name} did not define `config` or `includes`"
+        raise ValueError(xmsg)
+
+    # JSONC / JSON fallback
+    try:
+        return load_jsonc(config_path)
+    except ValueError as e:
+        clean_msg = remove_path_in_error_message(str(e), config_path)
+        xmsg = (
+            f"Error while loading configuration file '{config_path.name}': {clean_msg}"
+        )
+        raise ValueError(xmsg) from e
+
+
+def _parse_case_2_list_of_strings(
+    raw_config: list[str],
+) -> dict[str, Any]:
+    # --- Case 2: naked list of strings → flat config with include ---
+    return {"include": list(raw_config)}
+
+
+def _parse_case_flat_config(
+    raw_config: dict[str, Any],
+) -> dict[str, Any]:
+    # --- Flat config: all fields at root level ---
+    # The user gave a flat single-build config.
+    # No hoisting needed - all fields are already at the root level.
+    return dict(raw_config)
+
+
+def parse_config(
+    raw_config: dict[str, Any] | list[Any] | None,
+) -> dict[str, Any] | None:
+    """Normalize user config into canonical RootConfig shape (no filesystem work).
+
+    Accepted forms:
+      - None / [] / {}                → None (empty config)
+      - ["src/**", "assets/**"]       → flat config with those includes
+      - {...}                         → flat config (all fields at root level)
+
+     After normalization:
+      - Returns flat dict with all fields at root level, or None for empty config.
+      - Preserves all unknown keys for later validation.
+    """
+    # NOTE: This function only normalizes shape — it does NOT validate or restrict keys.
+    #       Unknown keys are preserved for the validation phase.
+
+    logger = getAppLogger()
+    logger.trace(f"[parse_config] Parsing {type(raw_config).__name__}")
+
+    # --- Case 1: empty config → None ---
+    # Includes None (empty file / config = None), [] (no builds), and {} (empty object)
+    if not raw_config or raw_config == {}:  # handles None, [], {}
+        return None
+
+    # --- Case 2: naked list of strings → flat config with include ---
+    if isinstance(raw_config, list) and all(isinstance(x, str) for x in raw_config):
+        logger.trace("[parse_config] Detected case: list of strings")
+        return _parse_case_2_list_of_strings(raw_config)
+
+    # --- Invalid list types (not all strings) ---
+    if isinstance(raw_config, list):
+        xmsg = (
+            "Invalid list configuration: "
+            "all elements must be strings (for include patterns)."
+        )
+        raise TypeError(xmsg)
+
+    # --- From here on, must be a dict ---
+    # Defensive check: should be unreachable after list cases above,
+    # but kept to guard against future changes or malformed input.
+    if not isinstance(raw_config, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
+        xmsg = (
+            f"Invalid top-level value: {type(raw_config).__name__} "
+            "(expected object or list of strings)",
+        )
+        raise TypeError(xmsg)
+
+    # --- Flat config: all fields at root level ---
+    # Note: build/builds keys will be rejected as unknown keys by validation
+    return _parse_case_flat_config(raw_config)
+
+
+def _validation_summary(
+    summary: ValidationSummary,
+    config_path: Path,
+) -> None:
+    """Pretty-print a validation summary using the standard log() interface."""
+    logger = getAppLogger()
+    mode = "strict mode" if summary.strict else "lenient mode"
+
+    # --- Build concise counts line ---
+    counts: list[str] = []
+    if summary.errors:
+        counts.append(f"{len(summary.errors)} error{plural(summary.errors)}")
+    if summary.strict_warnings:
+        counts.append(
+            f"{len(summary.strict_warnings)} strict warning"
+            f"{plural(summary.strict_warnings)}",
+        )
+    if summary.warnings:
+        counts.append(
+            f"{len(summary.warnings)} normal warning{plural(summary.warnings)}",
+        )
+    counts_msg = f"\nFound {', '.join(counts)}." if counts else ""
+
+    # --- Header (single icon) ---
+    if not summary.valid:
+        logger.error(
+            "Failed to validate configuration file %s (%s).%s",
+            config_path.name,
+            mode,
+            counts_msg,
+        )
+    elif counts:
+        logger.warning(
+            "Validated configuration file  %s (%s) with warnings.%s",
+            config_path.name,
+            mode,
+            counts_msg,
+        )
+    else:
+        logger.debug("Validated  %s (%s) successfully.", config_path.name, mode)
+
+    # --- Detailed sections ---
+    if summary.errors:
+        msg_summary = "\n  • ".join(summary.errors)
+        logger.error("\nErrors:\n  • %s", msg_summary)
+    if summary.strict_warnings:
+        msg_summary = "\n  • ".join(summary.strict_warnings)
+        logger.error("\nStrict warnings (treated as errors):\n  • %s", msg_summary)
+    if summary.warnings:
+        msg_summary = "\n  • ".join(summary.warnings)
+        logger.warning("\nWarnings (non-fatal):\n  • %s", msg_summary)
+
+
+def load_and_validate_config(
+    args: argparse.Namespace,
+) -> tuple[Path, RootConfig, ValidationSummary] | None:
+    """Find, load, parse, and validate the user's configuration.
+
+    Also determines the effective log level (from CLI/env/config/default)
+    early, so logging can initialize as soon as possible.
+
+    Returns:
+        (config_path, root_cfg, validation_summary)
+        if a config file was found and valid, or None if no config was found.
+
+    """
+    logger = getAppLogger()
+    # warn if cwd doesn't exist, edge case. We might still be able to run
+    cwd = Path.cwd().resolve()
+    if not cwd.exists():
+        logger.warning("Working directory does not exist: %s", cwd)
+
+    # --- Find config file ---
+    cwd = Path.cwd().resolve()
+    missing_level = "warning" if can_run_configless(args) else "error"
+    config_path = find_config(args, cwd, missing_level=missing_level)
+    if config_path is None:
+        return None
+
+    # --- Load the raw config (dict or list) ---
+    raw_config = load_config(config_path)
+    if raw_config is None:
+        return None
+
+    # --- Early peek for log_level before parsing ---
+    # Handles:
+    #   - Root configs with "log_level"
+    #   - Single-build dicts with "log_level"
+    # Skips empty or list configs.
+    if isinstance(raw_config, dict):
+        raw_log_level = raw_config.get("log_level")
+        if isinstance(raw_log_level, str) and raw_log_level:
+            logger.setLevel(
+                logger.determineLogLevel(args=args, root_log_level=raw_log_level)
+            )
+
+    # --- Parse structure into final form without types ---
+    try:
+        parsed_cfg = parse_config(raw_config)
+    except TypeError as e:
+        xmsg = f"Could not parse config {config_path.name}: {e}"
+        raise TypeError(xmsg) from e
+    if parsed_cfg is None:
+        return None
+
+    # --- Validate schema ---
+    validation_result = validate_config(parsed_cfg)
+    if not validation_result.valid:
+        # Build comprehensive error message with all details
+        mode = "strict mode" if validation_result.strict else "lenient mode"
+        counts: list[str] = []
+        if validation_result.errors:
+            error_count = len(validation_result.errors)
+            counts.append(f"{error_count} error{plural(validation_result.errors)}")
+        if validation_result.strict_warnings:
+            warning_count = len(validation_result.strict_warnings)
+            counts.append(
+                f"{warning_count} strict warning"
+                f"{plural(validation_result.strict_warnings)}"
+            )
+        counts_msg = f"\nFound {', '.join(counts)}." if counts else ""
+
+        # Build detailed error message with newlines
+        error_parts: list[str] = []
+        error_parts.append(
+            f"Failed to validate configuration file {config_path.name} "
+            f"({mode}).{counts_msg}"
+        )
+
+        if validation_result.errors:
+            msg_summary = "\n  • ".join(validation_result.errors)
+            error_parts.append(f"\nErrors:\n  • {msg_summary}")
+
+        if validation_result.strict_warnings:
+            msg_summary = "\n  • ".join(validation_result.strict_warnings)
+            error_parts.append(
+                f"\nStrict warnings (treated as errors):\n  • {msg_summary}"
+            )
+
+        xmsg = "".join(error_parts)
+        exception = ValueError(xmsg)
+        exception.data = validation_result  # type: ignore[attr-defined]
+        raise exception
+
+    # Log validation summary (only if valid or has warnings)
+    _validation_summary(validation_result, config_path)
+
+    # --- Upgrade to RootConfig type ---
+    root_cfg: RootConfig = cast_hint(RootConfig, parsed_cfg)
+    return config_path, root_cfg, validation_result
+
+
+# === serger.utils.utils_installed_packages ===
+# src/serger/utils/utils_installed_packages.py
+
+
+def discover_installed_packages_roots() -> list[str]:
+    """Discover installed packages root directories.
+
+    Searches for site-packages directories in priority order:
+    1. Poetry environment: `poetry env info --path` →
+       `{path}/lib/python*/site-packages`
+    2. Virtualenv/pip: Check `sys.path` for `site-packages` or
+       `dist-packages` in virtualenv paths
+    3. User site-packages: `~/.local/lib/python*/site-packages`
+       (or platform-specific)
+    4. System site-packages: Check `sys.path` for system
+       `site-packages` or `dist-packages`
+
+    Handles both `site-packages` and `dist-packages` (Debian/Ubuntu).
+
+    Returns:
+        List of absolute paths to site-packages directories in priority order.
+        Returns empty list if nothing found (does not error).
+
+    Note:
+        Paths are deduplicated and returned in priority order.
+    """
+    discovered: list[str] = []
+    seen: set[str] = set()
+
+    # 1. Poetry environment (highest priority)
+    poetry_paths = _discover_poetry_site_packages()
+    for path in poetry_paths:
+        if path not in seen:
+            discovered.append(path)
+            seen.add(path)
+
+    # 2. Virtualenv/pip from sys.path
+    venv_paths = _discover_venv_site_packages()
+    for path in venv_paths:
+        if path not in seen:
+            discovered.append(path)
+            seen.add(path)
+
+    # 3. User site-packages
+    user_paths = _discover_user_site_packages()
+    for path in user_paths:
+        if path not in seen:
+            discovered.append(path)
+            seen.add(path)
+
+    # 4. System site-packages from sys.path
+    system_paths = _discover_system_site_packages()
+    for path in system_paths:
+        if path not in seen:
+            discovered.append(path)
+            seen.add(path)
+
+    return discovered
+
+
+def _discover_poetry_site_packages() -> list[str]:
+    """Discover Poetry environment site-packages directories.
+
+    Returns:
+        List of absolute paths to Poetry site-packages directories.
+        Returns empty list if Poetry is not available or not in use.
+    """
+    poetry_cmd = shutil.which("poetry")
+    if not poetry_cmd:
+        return []
+
+    try:
+        result = subprocess.run(  # noqa: S603
+            [poetry_cmd, "env", "info", "--path"],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=10,
+        )
+        venv_path = Path(result.stdout.strip())
+        if not venv_path.exists():
+            return []
+
+        # Look for lib/python*/site-packages or lib/python*/dist-packages
+        site_packages_paths: list[str] = []
+        lib_dir = venv_path / "lib"
+        if lib_dir.exists():
+            for python_dir in lib_dir.iterdir():
+                if python_dir.is_dir() and python_dir.name.startswith("python"):
+                    for pkg_dir_name in ("site-packages", "dist-packages"):
+                        pkg_dir = python_dir / pkg_dir_name
+                        if pkg_dir.exists() and pkg_dir.is_dir():
+                            site_packages_paths.append(str(pkg_dir.resolve()))
+
+        return sorted(site_packages_paths)
+    except Exception:  # noqa: BLE001
+        # Poetry command failed or venv path invalid - return empty
+        return []
+
+
+def _discover_venv_site_packages() -> list[str]:
+    """Discover virtualenv/pip site-packages from sys.path.
+
+    Returns:
+        List of absolute paths to virtualenv site-packages directories.
+        Returns empty list if no virtualenv is detected.
+    """
+    discovered: list[str] = []
+    seen: set[str] = set()
+
+    # Check if we're in a virtualenv
+    if not (
+        hasattr(sys, "real_prefix")
+        or (hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix)
+    ):
+        # Not in a virtualenv
+        return []
+
+    # Check sys.path for site-packages or dist-packages in virtualenv
+    for path_str in sys.path:
+        path = Path(path_str).resolve()
+        if not path.exists():
+            continue
+
+        # Check if this path is a site-packages or dist-packages directory
+        if path.name in ("site-packages", "dist-packages"):
+            path_str_abs = str(path)
+            if path_str_abs not in seen:
+                discovered.append(path_str_abs)
+                seen.add(path_str_abs)
+        # Also check if path is inside a site-packages or dist-packages directory
+        elif "site-packages" in path.parts or "dist-packages" in path.parts:
+            # Find the site-packages or dist-packages parent
+            for parent in path.parents:
+                if parent.name in ("site-packages", "dist-packages"):
+                    parent_str = str(parent.resolve())
+                    if parent_str not in seen:
+                        discovered.append(parent_str)
+                        seen.add(parent_str)
+                    break
+
+    return sorted(discovered)
+
+
+def _discover_user_site_packages() -> list[str]:
+    """Discover user site-packages directories.
+
+    Returns:
+        List of absolute paths to user site-packages directories.
+        Returns empty list if none found.
+    """
+    discovered: list[str] = []
+
+    # Use site.getusersitepackages() if available (Python 3.11+)
+    # For Python 3.10, we'll construct it manually
+    try:
+        user_site = site.getusersitepackages()
+        if user_site:
+            user_path = Path(user_site).resolve()
+            if user_path.exists() and user_path.is_dir():
+                discovered.append(str(user_path))
+    except AttributeError:
+        # Python 3.10 doesn't have getusersitepackages()
+        # Construct it manually: ~/.local/lib/python*/site-packages
+        home = Path.home()
+        local_lib = home / ".local" / "lib"
+        if local_lib.exists():
+            for python_dir in local_lib.iterdir():
+                if python_dir.is_dir() and python_dir.name.startswith("python"):
+                    for pkg_dir_name in ("site-packages", "dist-packages"):
+                        pkg_dir = python_dir / pkg_dir_name
+                        if pkg_dir.exists() and pkg_dir.is_dir():
+                            discovered.append(str(pkg_dir.resolve()))
+
+    return sorted(discovered)
+
+
+def _discover_system_site_packages() -> list[str]:
+    """Discover system site-packages directories from sys.path.
+
+    Returns:
+        List of absolute paths to system site-packages directories.
+        Returns empty list if none found.
+    """
+    discovered: list[str] = []
+    seen: set[str] = set()
+
+    # Get system site-packages
+    system_sites: Sequence[str] = []
+    with contextlib.suppress(AttributeError):
+        # Python 3.10 doesn't have getsitepackages()
+        # Fall back to checking sys.path for system paths
+        system_sites = site.getsitepackages()
+
+    # Add from getsitepackages() if available
+    for site_path_str in system_sites:
+        site_path = Path(site_path_str).resolve()
+        if site_path.exists() and site_path.is_dir():
+            site_str = str(site_path)
+            if site_str not in seen:
+                discovered.append(site_str)
+                seen.add(site_str)
+
+    # Also check sys.path for system site-packages/dist-packages
+    # (not in virtualenv, not user site)
+    for path_str in sys.path:
+        path = Path(path_str).resolve()
+        if not path.exists():
+            continue
+
+        # Skip if this looks like a virtualenv path
+        if "site-packages" in path.parts or "dist-packages" in path.parts:
+            # Check if it's a system path (not in home, not in venv)
+            path_str_abs = str(path)
+            if (
+                path_str_abs not in seen
+                and not path_str_abs.startswith(str(Path.home()))
+                and not (
+                    hasattr(sys, "real_prefix")
+                    or (
+                        hasattr(sys, "base_prefix")
+                        and sys.base_prefix != sys.prefix
+                        and path_str_abs.startswith(sys.prefix)
+                    )
+                )
+            ):
+                # Find the site-packages or dist-packages parent
+                for parent in path.parents:
+                    if parent.name in ("site-packages", "dist-packages"):
+                        parent_str = str(parent.resolve())
+                        if parent_str not in seen:
+                            discovered.append(parent_str)
+                            seen.add(parent_str)
+                        break
+
+    return sorted(discovered)
 
 
 # === serger.utils.utils_paths ===
@@ -2934,185 +6157,38 @@ def make_includeresolved(
     return cast("IncludeResolved", entry)
 
 
-# === serger.config.config_validate ===
-# src/serger/config/config_validate.py
+# === serger.utils.utils_validation ===
+# src/serger/utils/utils_validation.py
 
 
-# --- constants ------------------------------------------------------
+def validate_required_keys(
+    config: dict[str, Any] | Any,
+    required_keys: set[str],
+    param_name: str,
+) -> None:
+    """Validate that a config dict contains all required keys.
 
-DRYRUN_KEYS = {"dry-run", "dry_run", "dryrun", "no-op", "no_op", "noop"}
-DRYRUN_MSG = (
-    "Ignored config key(s) {keys} {ctx}: this tool has no config option for it. "
-    "Use the CLI flag '--dry-run' instead."
-)
+    Args:
+        config: The config dict to validate (TypedDict or dict)
+        required_keys: Set of required key names
+        param_name: Name of the parameter (for error messages)
 
-ROOT_ONLY_KEYS = {"watch_interval"}
-ROOT_ONLY_MSG = "Ignored {keys} {ctx}: these options only apply at the root level."
-
-# Field-specific type examples for better error messages
-# Dict format: {field_pattern: example_value}
-# Wildcard patterns (with *) are supported for matching multiple fields
-FIELD_EXAMPLES: dict[str, str] = {
-    "root.include": '["src/", "lib/"]',
-    "root.out": '"dist/script.py"',
-    "root.display_name": '"MyProject"',
-    "root.description": '"A description of the project"',
-    "root.repo": '"https://github.com/user/project"',
-    "root.internal_imports": '"force_strip"',
-    "root.external_imports": '"top"',
-    "root.watch_interval": "1.5",
-    "root.log_level": '"debug"',
-    "root.strict_config": "true",
-}
-
-
-# ---------------------------------------------------------------------------
-# main validator
-# ---------------------------------------------------------------------------
-
-
-def _set_valid_and_return(
-    *,
-    flush: bool = True,
-    summary: ValidationSummary,  # could be modified
-    agg: SchemaErrorAggregator,  # could be modified
-) -> ValidationSummary:
-    if flush:
-        flush_schema_aggregators(summary=summary, agg=agg)
-    summary.valid = not summary.errors and not summary.strict_warnings
-    return summary
-
-
-def _validate_root(
-    parsed_cfg: dict[str, Any],
-    *,
-    strict_arg: bool | None,
-    summary: ValidationSummary,  # modified
-    agg: SchemaErrorAggregator,  # modified
-) -> ValidationSummary | None:
-    logger = get_app_logger()
-    logger.trace(f"[validate_root] Validating root with {len(parsed_cfg)} keys")
-
-    strict_config: bool = summary.strict
-    # --- Determine strictness from arg or root config or default ---
-    strict_from_root: Any = parsed_cfg.get("strict_config")
-    if strict_arg is not None and strict_arg:
-        strict_config = strict_arg
-    elif strict_arg is None and isinstance(strict_from_root, bool):
-        strict_config = strict_from_root
-
-    if strict_config:
-        summary.strict = True
-
-    # --- Validate root-level keys ---
-    root_schema = schema_from_typeddict(RootConfig)
-    prewarn_root: set[str] = set()
-    ok, found = warn_keys_once(
-        "dry-run",
-        DRYRUN_KEYS,
-        parsed_cfg,
-        "in top-level configuration",
-        DRYRUN_MSG,
-        strict_config=strict_config,
-        summary=summary,
-        agg=agg,
-    )
-    prewarn_root |= found
-
-    ok = check_schema_conformance(
-        parsed_cfg,
-        root_schema,
-        "in top-level configuration",
-        strict_config=strict_config,
-        summary=summary,
-        prewarn=prewarn_root,
-        ignore_keys={"builds"},
-        base_path="root",
-        field_examples=FIELD_EXAMPLES,
-    )
-    if not ok and not (summary.errors or summary.strict_warnings):
-        collect_msg(
-            "Top-level configuration invalid.",
-            strict=True,
-            summary=summary,
-            is_error=True,
-        )
-
-    return None
-
-
-def _validate_builds(
-    parsed_cfg: dict[str, Any],
-    *,
-    strict_arg: bool | None,  # noqa: ARG001
-    summary: ValidationSummary,  # modified
-    agg: SchemaErrorAggregator,  # modified
-) -> ValidationSummary | None:
-    """Validate that 'builds' key is not present (multi-build not supported)."""
-    logger = get_app_logger()
-    logger.trace("[validate_builds] Checking for unsupported 'builds' key")
-
-    if "builds" in parsed_cfg:
-        collect_msg(
-            "The 'builds' key is not supported. "
-            "Please use a single flat configuration object with all options "
-            "at the root level.",
-            strict=True,
-            summary=summary,
-            is_error=True,
-        )
-        return _set_valid_and_return(summary=summary, agg=agg)
-
-    return None
-
-
-def validate_config(
-    parsed_cfg: dict[str, Any],
-    *,
-    strict: bool | None = None,
-) -> ValidationSummary:
-    """Validate normalized config. Returns True if valid.
-
-    strict=True  →  warnings become fatal, but still listed separately
-    strict=False →  warnings remain non-fatal
-
-    The `strict_config` key in the root config (and optionally in each build)
-    controls strictness. CLI flags are not considered.
-
-    Returns a ValidationSummary object.
+    Raises:
+        TypeError: If any required keys are missing
     """
-    logger = get_app_logger()
-    logger.trace(f"[validate_config] Starting validation (strict={strict})")
+    if not required_keys:
+        return
 
-    summary = ValidationSummary(
-        valid=True,
-        errors=[],
-        strict_warnings=[],
-        warnings=[],
-        strict=DEFAULT_STRICT_CONFIG,
-    )
-    agg: SchemaErrorAggregator = {}
-
-    # --- Validate root structure ---
-    ret = _validate_root(
-        parsed_cfg,
-        strict_arg=strict,
-        summary=summary,
-        agg=agg,
-    )
-    if ret is not None:
-        return ret
-
-    # --- Validate builds structure ---
-    ret = _validate_builds(parsed_cfg, strict_arg=strict, summary=summary, agg=agg)
-    if ret is not None:
-        return ret
-
-    # --- finalize result ---
-    return _set_valid_and_return(
-        summary=summary,
-        agg=agg,
-    )
+    # TypedDict is a dict at runtime, but type checkers need help
+    config_dict = cast("dict[str, Any]", config)
+    missing = required_keys - config_dict.keys()
+    if missing:
+        missing_str = ", ".join(sorted(missing))
+        xmsg = (
+            f"Missing required keys in {param_name}: {missing_str}. "
+            f"Required keys: {', '.join(sorted(required_keys))}"
+        )
+        raise TypeError(xmsg)
 
 
 # === serger.utils.utils_matching ===
@@ -3126,7 +6202,7 @@ def is_excluded(path_entry: PathResolved, exclude_patterns: list[PathResolved]) 
     validate_required_keys(path_entry, {"path", "root"}, "path_entry")
     for exc in exclude_patterns:
         validate_required_keys(exc, {"path", "root"}, "exclude_patterns item")
-    logger = get_app_logger()
+    logger = getAppLogger()
     path = path_entry["path"]
     root = path_entry["root"]
     # Patterns are always normalized to PathResolved["path"] under config_resolve
@@ -3173,7 +6249,7 @@ def _interpret_dest_for_module_name(  # noqa: PLR0911
     Returns:
         Virtual destination path that should be used for module name derivation
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
     dest_path = Path(dest)
     include_root_resolved = Path(include_root).resolve()
     file_path_resolved = file_path.resolve()
@@ -3275,22 +6351,25 @@ def derive_module_name(  # noqa: PLR0912, PLR0915, C901
     file_path: Path,
     package_root: Path,
     include: IncludeResolved | None = None,
-    module_bases: list[str] | None = None,
-    user_provided_module_bases: list[str] | None = None,
+    source_bases: list[str] | None = None,
+    user_provided_source_bases: list[str] | None = None,
+    detected_packages: set[str] | None = None,
 ) -> str:
     """Derive module name from file path for shim generation.
 
     Default behavior: Preserve directory structure from file path relative to
     package root. With dest: Preserve structure from dest path instead.
-    With module_bases: For external files, derive relative to matching module_base.
+    With source_bases: For external files, derive relative to matching module_base.
 
     Args:
         file_path: The file path to derive module name from
         package_root: Common root of all included files
         include: Optional include that produced this file (for dest access)
-        module_bases: Optional list of module base directories for external files
-        user_provided_module_bases: Optional list of user-provided module bases
+        source_bases: Optional list of module base directories for external files
+        user_provided_source_bases: Optional list of user-provided module bases
             (from config, excludes auto-discovered package directories)
+        detected_packages: Optional set of detected package names for preserving
+            package structure when module_base is a detected package
 
     Returns:
         Derived module name (e.g., "core.base" from "src/core/base.py")
@@ -3298,7 +6377,7 @@ def derive_module_name(  # noqa: PLR0912, PLR0915, C901
     Raises:
         ValueError: If module name would be empty or invalid
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
     file_path_resolved = file_path.resolve()
     package_root_resolved = package_root.resolve()
 
@@ -3353,17 +6432,17 @@ def derive_module_name(  # noqa: PLR0912, PLR0915, C901
     except ValueError:
         is_under_package_root = False
 
-    # Check module_bases if provided
+    # Check source_bases if provided
     # If file is under both package_root and a module_base, prefer module_base
     # when it's more specific (deeper in the tree than package_root)
     # BUT: Don't use module_base if it's the file's parent directory
     # (would lose package name)
-    # Use user_provided_module_bases for the fix (external files),
-    # fall back to all module_bases for backward compatibility
+    # Use user_provided_source_bases for the fix (external files),
+    # fall back to all source_bases for backward compatibility
     rel_path = None
-    # Prefer user-provided module_bases (from config) over auto-discovered ones
+    # Prefer user-provided source_bases (from config) over auto-discovered ones
     bases_to_use = (
-        user_provided_module_bases if user_provided_module_bases else module_bases
+        user_provided_source_bases if user_provided_source_bases else source_bases
     )
     if bases_to_use:
         file_parent = file_path_resolved.parent
@@ -3393,20 +6472,63 @@ def derive_module_name(  # noqa: PLR0912, PLR0915, C901
                 # Check if module_base is more specific (deeper) than package_root
                 try:
                     module_base.relative_to(package_root_resolved)
-                    # module_base is under package_root - check if it's deeper
-                    package_root_parts = len(package_root_resolved.parts)
-                    module_base_parts = len(module_base.parts)
-                    # Only use module_base if it's strictly deeper (more specific)
-                    if module_base_parts > package_root_parts:
-                        # module_base is deeper, use it
+                    # module_base is under package_root
+                    # For files from installed_bases or external sources, prefer
+                    # module_base even if not deeper (to get correct module names)
+                    # Check if file is actually under this module_base
+                    try:
+                        file_path_resolved.relative_to(module_base)
+                        # File is under module_base - use it for correct module name
                         rel_path = module_base_rel
-                        logger.trace(
-                            f"[DERIVE] file={file_path} under both root={package_root} "
-                            f"and module_base={module_base}, using module_base "
-                            f"(more specific: {module_base_parts} > "
-                            f"{package_root_parts})",
-                        )
+                        # If module_base.name is a detected package AND it's not the
+                        # package_root name, prepend it to preserve package structure
+                        # (e.g., pkg1/sub/mod1.py -> pkg1.sub.mod1)
+                        # But don't prepend if:
+                        # 1. module_base is the package_root itself (double prefix)
+                        # 2. module_base.name is a common directory name
+                        #    (src, lib, site-packages)
+                        # 3. The relative path already starts with module_base.name
+                        should_prepend = False
+                        if (
+                            detected_packages
+                            and module_base.name in detected_packages
+                            and module_base.name != package_root_resolved.name
+                        ):
+                            # Don't prepend common directory names
+                            common_dirs = {
+                                "src",
+                                "lib",
+                                "site-packages",
+                                "dist-packages",
+                            }
+                            if module_base.name not in common_dirs:
+                                # Check if rel_path already starts with module_base.name
+                                # (avoid double prefix like pkg1.pkg1.sub.mod1)
+                                rel_parts = list(rel_path.parts)
+                                if rel_parts:
+                                    first_part = rel_parts[0]
+                                    # Only prepend if first part is not module_base.name
+                                    if first_part != module_base.name:
+                                        should_prepend = True
+                        if should_prepend:
+                            # Prepend module_base.name to preserve package structure
+                            rel_path = Path(module_base.name) / rel_path
+                            logger.trace(
+                                f"[DERIVE] file={file_path} under both "
+                                f"root={package_root} and module_base={module_base}, "
+                                f"using module_base (file is under module_base, "
+                                f"prepending package {module_base.name})",
+                            )
+                        else:
+                            logger.trace(
+                                f"[DERIVE] file={file_path} under both "
+                                f"root={package_root} and module_base={module_base}, "
+                                f"using module_base (file is under module_base)",
+                            )
                         break
+                    except ValueError:
+                        # File is not under this module_base, continue
+                        pass
                     # module_base is at same level or higher, don't use it
                     # (preserve original behavior for files under package_root)
                 except ValueError:
@@ -3459,405 +6581,6 @@ def derive_module_name(  # noqa: PLR0912, PLR0915, C901
     return module_name
 
 
-# === serger.config.config_loader ===
-# src/serger/config/config_loader.py
-
-
-def can_run_configless(args: argparse.Namespace) -> bool:
-    """To run without config we need at least --include
-    or --add-include or a positional include.
-
-    Since this is pre-args normalization we need to still check
-    positionals and not assume the positional out doesn't improperly
-    greed grab the include.
-    """
-    return bool(
-        getattr(args, "include", None)
-        or getattr(args, "add_include", None)
-        or getattr(args, "positional_include", None)
-        or getattr(args, "positional_out", None),
-    )
-
-
-def find_config(
-    args: argparse.Namespace,
-    cwd: Path,
-    *,
-    missing_level: str = "error",
-) -> Path | None:
-    """Locate a configuration file.
-
-    missing_level: log-level for failing to find a configuration file.
-
-    Search order:
-      1. Explicit path from CLI (--config)
-      2. Default candidates in the current working directory:
-         .{PROGRAM_CONFIG}.py, .{PROGRAM_CONFIG}.jsonc, .{PROGRAM_CONFIG}.json
-
-    Returns the first matching path, or None if no config was found.
-    """
-    # NOTE: We only have early no-config Log-Level
-    logger = get_app_logger()
-
-    level = logger.resolve_level_name(missing_level)
-    if level is None:
-        logger.error("Invalid log level name in find_config(): %s", missing_level)
-        missing_level = "error"
-
-    # --- 1. Explicit config path ---
-    if getattr(args, "config", None):
-        config = Path(args.config).expanduser().resolve()
-        logger.trace(f"[find_config] Checking explicit path: {config}")
-        if not config.exists():
-            # Explicit path → hard failure
-            xmsg = f"Specified config file not found: {config}"
-            raise FileNotFoundError(xmsg)
-        if config.is_dir():
-            xmsg = f"Specified config path is a directory, not a file: {config}"
-            raise ValueError(xmsg)
-        return config
-
-    # --- 2. Default candidate files (search current dir and parents) ---
-    # Search from cwd up to filesystem root, returning first match (closest to cwd)
-    current = cwd
-    candidate_names = [
-        f".{PROGRAM_CONFIG}.py",
-        f".{PROGRAM_CONFIG}.jsonc",
-        f".{PROGRAM_CONFIG}.json",
-    ]
-    found: list[Path] = []
-    while True:
-        for name in candidate_names:
-            candidate = current / name
-            if candidate.exists():
-                found.append(candidate)
-        if found:
-            # Found at least one config file at this level
-            break
-        parent = current.parent
-        if parent == current:  # Reached filesystem root
-            break
-        current = parent
-
-    if not found:
-        # Expected absence — soft failure (continue)
-        logger.log_dynamic(missing_level, f"No config file found in {cwd} or parents")
-        return None
-
-    # --- 3. Handle multiple matches at same level (prefer .py > .jsonc > .json) ---
-    if len(found) > 1:
-        # Prefer .py, then .jsonc, then .json
-        priority = {".py": 0, ".jsonc": 1, ".json": 2}
-        found_sorted = sorted(found, key=lambda p: priority.get(p.suffix, 99))
-        names = ", ".join(p.name for p in found_sorted)
-        logger.warning(
-            "Multiple config files detected (%s); using %s.",
-            names,
-            found_sorted[0].name,
-        )
-        return found_sorted[0]
-    return found[0]
-
-
-def load_config(config_path: Path) -> dict[str, Any] | list[Any] | None:
-    """Load configuration data from a file.
-
-    Supports:
-      - Python configs: .py files exporting either `config` or `includes`
-      - JSON/JSONC configs: .json, .jsonc files
-
-    Returns:
-        The raw object defined in the config (dict, list, or None).
-        Returns None for intentionally empty configs
-          (e.g. empty files or `config = None`).
-
-    Raises:
-        ValueError if a .py config defines none of the expected variables.
-
-    """
-    # NOTE: We only have early no-config Log-Level
-    logger = get_app_logger()
-    logger.trace(f"[load_config] Loading from {config_path} ({config_path.suffix})")
-
-    # --- Python config ---
-    if config_path.suffix == ".py":
-        config_globals: dict[str, Any] = {}
-
-        # Allow local imports in Python configs (e.g. from ./helpers import foo)
-        # This is safe because configs are trusted user code.
-        parent_dir = str(config_path.parent)
-        added_to_sys_path = parent_dir not in sys.path
-        if added_to_sys_path:
-            sys.path.insert(0, parent_dir)
-
-        # Execute the python config file
-        try:
-            source = config_path.read_text(encoding="utf-8")
-            exec(compile(source, str(config_path), "exec"), config_globals)  # noqa: S102
-            logger.trace(
-                f"[EXEC] globals after exec: {list(config_globals.keys())}",
-            )
-        except Exception as e:
-            tb = traceback.format_exc()
-            xmsg = (
-                f"Error while executing Python config: {config_path.name}\n"
-                f"{type(e).__name__}: {e}\n{tb}"
-            )
-            # Raise a generic runtime error for main() to catch and print cleanly
-            raise RuntimeError(xmsg) from e
-        finally:
-            # Only remove if we actually inserted it
-            if added_to_sys_path and sys.path[0] == parent_dir:
-                sys.path.pop(0)
-
-        for key in ("config", "includes"):
-            if key in config_globals:
-                result = config_globals[key]
-                if not isinstance(result, (dict, list, type(None))):
-                    xmsg = (
-                        f"{key} in {config_path.name} must be a dict, list, or None"
-                        f", not {type(result).__name__}"
-                    )
-                    raise TypeError(xmsg)
-
-                # Explicitly narrow the loaded config to its expected union type.
-                return cast("dict[str, Any] | list[Any] | None", result)
-
-        xmsg = f"{config_path.name} did not define `config` or `includes`"
-        raise ValueError(xmsg)
-
-    # JSONC / JSON fallback
-    try:
-        return load_jsonc(config_path)
-    except ValueError as e:
-        clean_msg = remove_path_in_error_message(str(e), config_path)
-        xmsg = (
-            f"Error while loading configuration file '{config_path.name}': {clean_msg}"
-        )
-        raise ValueError(xmsg) from e
-
-
-def _parse_case_2_list_of_strings(
-    raw_config: list[str],
-) -> dict[str, Any]:
-    # --- Case 2: naked list of strings → flat config with include ---
-    return {"include": list(raw_config)}
-
-
-def _parse_case_flat_config(
-    raw_config: dict[str, Any],
-) -> dict[str, Any]:
-    # --- Flat config: all fields at root level ---
-    # The user gave a flat single-build config.
-    # No hoisting needed - all fields are already at the root level.
-    return dict(raw_config)
-
-
-def parse_config(
-    raw_config: dict[str, Any] | list[Any] | None,
-) -> dict[str, Any] | None:
-    """Normalize user config into canonical RootConfig shape (no filesystem work).
-
-    Accepted forms:
-      - None / [] / {}                → None (empty config)
-      - ["src/**", "assets/**"]       → flat config with those includes
-      - {...}                         → flat config (all fields at root level)
-
-     After normalization:
-      - Returns flat dict with all fields at root level, or None for empty config.
-      - Preserves all unknown keys for later validation.
-    """
-    # NOTE: This function only normalizes shape — it does NOT validate or restrict keys.
-    #       Unknown keys are preserved for the validation phase.
-
-    logger = get_app_logger()
-    logger.trace(f"[parse_config] Parsing {type(raw_config).__name__}")
-
-    # --- Case 1: empty config → None ---
-    # Includes None (empty file / config = None), [] (no builds), and {} (empty object)
-    if not raw_config or raw_config == {}:  # handles None, [], {}
-        return None
-
-    # --- Case 2: naked list of strings → flat config with include ---
-    if isinstance(raw_config, list) and all(isinstance(x, str) for x in raw_config):
-        logger.trace("[parse_config] Detected case: list of strings")
-        return _parse_case_2_list_of_strings(raw_config)
-
-    # --- Invalid list types (not all strings) ---
-    if isinstance(raw_config, list):
-        xmsg = (
-            "Invalid list configuration: "
-            "all elements must be strings (for include patterns)."
-        )
-        raise TypeError(xmsg)
-
-    # --- From here on, must be a dict ---
-    # Defensive check: should be unreachable after list cases above,
-    # but kept to guard against future changes or malformed input.
-    if not isinstance(raw_config, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
-        xmsg = (
-            f"Invalid top-level value: {type(raw_config).__name__} "
-            "(expected object or list of strings)",
-        )
-        raise TypeError(xmsg)
-
-    # --- Flat config: all fields at root level ---
-    # Note: build/builds keys will be rejected as unknown keys by validation
-    return _parse_case_flat_config(raw_config)
-
-
-def _validation_summary(
-    summary: ValidationSummary,
-    config_path: Path,
-) -> None:
-    """Pretty-print a validation summary using the standard log() interface."""
-    logger = get_app_logger()
-    mode = "strict mode" if summary.strict else "lenient mode"
-
-    # --- Build concise counts line ---
-    counts: list[str] = []
-    if summary.errors:
-        counts.append(f"{len(summary.errors)} error{plural(summary.errors)}")
-    if summary.strict_warnings:
-        counts.append(
-            f"{len(summary.strict_warnings)} strict warning"
-            f"{plural(summary.strict_warnings)}",
-        )
-    if summary.warnings:
-        counts.append(
-            f"{len(summary.warnings)} normal warning{plural(summary.warnings)}",
-        )
-    counts_msg = f"\nFound {', '.join(counts)}." if counts else ""
-
-    # --- Header (single icon) ---
-    if not summary.valid:
-        logger.error(
-            "Failed to validate configuration file %s (%s).%s",
-            config_path.name,
-            mode,
-            counts_msg,
-        )
-    elif counts:
-        logger.warning(
-            "Validated configuration file  %s (%s) with warnings.%s",
-            config_path.name,
-            mode,
-            counts_msg,
-        )
-    else:
-        logger.debug("Validated  %s (%s) successfully.", config_path.name, mode)
-
-    # --- Detailed sections ---
-    if summary.errors:
-        msg_summary = "\n  • ".join(summary.errors)
-        logger.error("\nErrors:\n  • %s", msg_summary)
-    if summary.strict_warnings:
-        msg_summary = "\n  • ".join(summary.strict_warnings)
-        logger.error("\nStrict warnings (treated as errors):\n  • %s", msg_summary)
-    if summary.warnings:
-        msg_summary = "\n  • ".join(summary.warnings)
-        logger.warning("\nWarnings (non-fatal):\n  • %s", msg_summary)
-
-
-def load_and_validate_config(
-    args: argparse.Namespace,
-) -> tuple[Path, RootConfig, ValidationSummary] | None:
-    """Find, load, parse, and validate the user's configuration.
-
-    Also determines the effective log level (from CLI/env/config/default)
-    early, so logging can initialize as soon as possible.
-
-    Returns:
-        (config_path, root_cfg, validation_summary)
-        if a config file was found and valid, or None if no config was found.
-
-    """
-    logger = get_app_logger()
-    # warn if cwd doesn't exist, edge case. We might still be able to run
-    cwd = Path.cwd().resolve()
-    if not cwd.exists():
-        logger.warning("Working directory does not exist: %s", cwd)
-
-    # --- Find config file ---
-    cwd = Path.cwd().resolve()
-    missing_level = "warning" if can_run_configless(args) else "error"
-    config_path = find_config(args, cwd, missing_level=missing_level)
-    if config_path is None:
-        return None
-
-    # --- Load the raw config (dict or list) ---
-    raw_config = load_config(config_path)
-    if raw_config is None:
-        return None
-
-    # --- Early peek for log_level before parsing ---
-    # Handles:
-    #   - Root configs with "log_level"
-    #   - Single-build dicts with "log_level"
-    # Skips empty or list configs.
-    if isinstance(raw_config, dict):
-        raw_log_level = raw_config.get("log_level")
-        if isinstance(raw_log_level, str) and raw_log_level:
-            logger.setLevel(
-                logger.determine_log_level(args=args, root_log_level=raw_log_level)
-            )
-
-    # --- Parse structure into final form without types ---
-    try:
-        parsed_cfg = parse_config(raw_config)
-    except TypeError as e:
-        xmsg = f"Could not parse config {config_path.name}: {e}"
-        raise TypeError(xmsg) from e
-    if parsed_cfg is None:
-        return None
-
-    # --- Validate schema ---
-    validation_result = validate_config(parsed_cfg)
-    if not validation_result.valid:
-        # Build comprehensive error message with all details
-        mode = "strict mode" if validation_result.strict else "lenient mode"
-        counts: list[str] = []
-        if validation_result.errors:
-            error_count = len(validation_result.errors)
-            counts.append(f"{error_count} error{plural(validation_result.errors)}")
-        if validation_result.strict_warnings:
-            warning_count = len(validation_result.strict_warnings)
-            counts.append(
-                f"{warning_count} strict warning"
-                f"{plural(validation_result.strict_warnings)}"
-            )
-        counts_msg = f"\nFound {', '.join(counts)}." if counts else ""
-
-        # Build detailed error message with newlines
-        error_parts: list[str] = []
-        error_parts.append(
-            f"Failed to validate configuration file {config_path.name} "
-            f"({mode}).{counts_msg}"
-        )
-
-        if validation_result.errors:
-            msg_summary = "\n  • ".join(validation_result.errors)
-            error_parts.append(f"\nErrors:\n  • {msg_summary}")
-
-        if validation_result.strict_warnings:
-            msg_summary = "\n  • ".join(validation_result.strict_warnings)
-            error_parts.append(
-                f"\nStrict warnings (treated as errors):\n  • {msg_summary}"
-            )
-
-        xmsg = "".join(error_parts)
-        exception = ValueError(xmsg)
-        exception.data = validation_result  # type: ignore[attr-defined]
-        raise exception
-
-    # Log validation summary (only if valid or has warnings)
-    _validation_summary(validation_result, config_path)
-
-    # --- Upgrade to RootConfig type ---
-    root_cfg: RootConfig = cast_hint(RootConfig, parsed_cfg)
-    return config_path, root_cfg, validation_result
-
-
 # === serger.module_actions ===
 """Module actions processing for renaming, moving, copying, and deleting modules."""
 
@@ -3880,7 +6603,7 @@ def extract_module_name_from_source_path(
     Raises:
         ValueError: If module name doesn't match expected_source or file is invalid
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
 
     # Validate file exists
     if not source_path.exists():
@@ -4731,12 +7454,13 @@ def apply_module_actions(
     return result
 
 
-def _generate_force_actions(  # noqa: PLR0912
+def _generate_force_actions(  # noqa: PLR0912, C901
     detected_packages: set[str],
     package_name: str,
     mode: ModuleActionMode,
     *,
     module_names: list[str] | None = None,
+    source_bases: list[str] | None = None,
 ) -> list[ModuleActionFull]:
     """Generate actions for force/force_flat modes.
 
@@ -4750,6 +7474,8 @@ def _generate_force_actions(  # noqa: PLR0912
         mode: "preserve" or "flatten"
         module_names: Optional list of module names (required for flatten mode
             to identify all first components that need flattening)
+        source_bases: Optional list of source base directories for detecting
+            nested packages
 
     Returns:
         List of actions for packages/modules to transform
@@ -4784,6 +7510,15 @@ def _generate_force_actions(  # noqa: PLR0912
         root_packages = {pkg for pkg in detected_packages if "." not in pkg}
         # Filter to only top-level root packages (not nested under other packages)
         top_level_packages: set[str] = set()
+        logger = getAppLogger()
+        logger.trace(
+            "[FORCE_ACTIONS] preserve mode: detected_packages=%s, "
+            "root_packages=%s, source_bases=%s, module_names=%s",
+            sorted(detected_packages),
+            sorted(root_packages),
+            source_bases,
+            module_names[:5] if module_names else None,  # First 5 for brevity
+        )
         for pkg in root_packages:
             if pkg == package_name:
                 continue
@@ -4793,15 +7528,85 @@ def _generate_force_actions(  # noqa: PLR0912
                 # Check if pkg is nested under other_pkg
                 # e.g., if other_pkg="pkg1" and pkg="sub", check if "pkg1.sub"
                 # exists
-                if other_pkg not in (pkg, package_name) and (
-                    f"{other_pkg}.{pkg}" in detected_packages
-                    or any(
+                if other_pkg not in (pkg, package_name):
+                    # Check if "other_pkg.pkg" is in detected_packages
+                    if f"{other_pkg}.{pkg}" in detected_packages:
+                        is_nested = True
+                        break
+                    # Check if any module name starts with "other_pkg.pkg."
+                    if any(
                         mod.startswith(f"{other_pkg}.{pkg}.")
                         for mod in detected_packages
-                    )
-                ):
-                    is_nested = True
-                    break
+                    ):
+                        is_nested = True
+                        break
+                    # Check if other_pkg is in source_bases and pkg appears in
+                    # module_names, suggesting pkg is nested under other_pkg
+                    # This handles cases where pkg1 is in source_bases and contains
+                    # sub, but module names are "sub.mod1" not "pkg1.sub.mod1"
+                    if source_bases and module_names:
+                        # Check if other_pkg appears as a directory name in source_bases
+                        other_pkg_in_bases = any(
+                            Path(base).name == other_pkg
+                            or base.endswith((f"/{other_pkg}", f"\\{other_pkg}"))
+                            for base in source_bases
+                        )
+                        if other_pkg_in_bases:
+                            # Check if pkg appears in module_names as a component
+                            # under other_pkg (e.g., other_pkg.pkg.X or other_pkg.pkg)
+                            # This indicates pkg is nested under other_pkg
+                            pkg_nested_under_other = any(
+                                mod_name.startswith(f"{other_pkg}.{pkg}.")
+                                or mod_name == f"{other_pkg}.{pkg}"
+                                for mod_name in module_names
+                            )
+                            if pkg_nested_under_other:
+                                # other_pkg is in source_bases and pkg appears nested
+                                # under other_pkg in module_names
+                                logger.trace(
+                                    "[FORCE_ACTIONS] Detected %s as nested under %s "
+                                    "(found %s.%s in module_names)",
+                                    pkg,
+                                    other_pkg,
+                                    other_pkg,
+                                    pkg,
+                                )
+                                is_nested = True
+                                break
+                            # Also check if pkg appears as standalone in module_names
+                            # AND other_pkg is a parent directory in source_bases
+                            # (this handles cases where module names are "pkg.X" not
+                            # "other_pkg.pkg.X" because derive_module_name used
+                            # other_pkg as module_base)
+                            # BUT: Only if other_pkg doesn't also appear standalone
+                            # (to avoid false positives when both are top-level)
+                            pkg_standalone_in_names = any(
+                                mod_name == pkg or mod_name.startswith(f"{pkg}.")
+                                for mod_name in module_names
+                            )
+                            other_pkg_standalone_in_names = any(
+                                mod_name == other_pkg
+                                or mod_name.startswith(f"{other_pkg}.")
+                                for mod_name in module_names
+                            )
+                            # Only consider pkg nested if:
+                            # 1. pkg appears standalone in module_names
+                            # 2. other_pkg is in source_bases
+                            # 3. other_pkg does NOT also appear standalone
+                            #    (if both appear standalone, they're siblings)
+                            if (
+                                pkg_standalone_in_names
+                                and not other_pkg_standalone_in_names
+                            ):
+                                logger.trace(
+                                    "[FORCE_ACTIONS] Detected %s as nested under %s "
+                                    "(other_pkg in source_bases, pkg standalone "
+                                    "but other_pkg isn't)",
+                                    pkg,
+                                    other_pkg,
+                                )
+                                is_nested = True
+                                break
             if not is_nested:
                 top_level_packages.add(pkg)
 
@@ -4847,6 +7652,7 @@ def generate_actions_from_mode(
     package_name: str,
     *,
     module_names: list[str] | None = None,
+    source_bases: list[str] | None = None,
 ) -> list[ModuleActionFull]:
     """Generate module_actions equivalent to a module_mode.
 
@@ -4862,6 +7668,8 @@ def generate_actions_from_mode(
         package_name: Target package name (excluded from actions)
         module_names: Optional list of module names (required for flatten mode
             to identify all first components that need flattening)
+        source_bases: Optional list of source base directories for detecting
+            nested packages
 
     Returns:
         List of actions equivalent to the mode
@@ -4870,11 +7678,21 @@ def generate_actions_from_mode(
         ValueError: For invalid mode values
     """
     if module_mode == "force":
-        return _generate_force_actions(detected_packages, package_name, "preserve")
+        return _generate_force_actions(
+            detected_packages,
+            package_name,
+            "preserve",
+            module_names=module_names,
+            source_bases=source_bases,
+        )
 
     if module_mode == "force_flat":
         return _generate_force_actions(
-            detected_packages, package_name, "flatten", module_names=module_names
+            detected_packages,
+            package_name,
+            "flatten",
+            module_names=module_names,
+            source_bases=source_bases,
         )
 
     if module_mode in ("unify", "unify_preserve"):
@@ -5036,7 +7854,7 @@ def apply_cleanup_behavior(
     Raises:
         ValueError: If cleanup: "error" and mismatches exist
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
     warnings: list[str] = []
     shims_to_remove: set[str] = set()
 
@@ -5075,6 +7893,26 @@ def apply_cleanup_behavior(
     updated_shims = shim_modules - shims_to_remove
 
     return updated_shims, warnings
+
+
+# === serger.utils.__init__ ===
+# src/serger/utils/__init__.py
+
+
+__all__ = [  # noqa: RUF022
+    # utils_installed_packages
+    "discover_installed_packages_roots",
+    # utils_matching
+    "is_excluded",
+    # utils_modules
+    "derive_module_name",
+    # utils_paths
+    "shorten_path_for_display",
+    "shorten_paths_for_display",
+    # utils_types
+    "make_includeresolved",
+    "make_pathresolved",
+]
 
 
 # === serger.config.config_resolve ===
@@ -5148,7 +7986,7 @@ def _resolve_single_license_pattern(
     Returns:
         List of resolved file paths (empty if no matches)
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
     if Path(pattern_str).is_absolute():
         # Absolute path - use as-is but resolve
         pattern_path = Path(pattern_str).resolve()
@@ -5180,7 +8018,7 @@ def _check_duplicate_license_files(
     Args:
         pattern_to_files: Mapping of patterns to their matched files
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
     # Build reverse mapping: file -> patterns that matched it
     file_to_patterns: dict[Path, list[str]] = {}
     for pattern_str, files in pattern_to_files.items():
@@ -5213,7 +8051,7 @@ def _read_license_files(matched_files: set[Path]) -> list[str]:
     Returns:
         List of file contents (empty strings for failed reads)
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
     text_parts: list[str] = []
     for file_path in sorted(matched_files):
         try:
@@ -5245,7 +8083,7 @@ def _handle_missing_license_patterns(
     Returns:
         List of warning messages for missing patterns
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
     missing_patterns = [
         pattern_str
         for pattern_str in patterns
@@ -6038,7 +8876,7 @@ def _apply_metadata_fields(
             configless builds). Controls whether description, authors, and
             license are applied.
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
 
     # Apply fields from pyproject.toml
     # Version is resolved immediately (user -> pyproject) rather than storing
@@ -6118,7 +8956,7 @@ def _apply_pyproject_metadata(
         root_cfg: Root config (may be None)
         config_dir: Config directory for path resolution
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
 
     # Try to find pyproject.toml
     pyproject_path = _resolve_pyproject_path(build_cfg, root_cfg, config_dir)
@@ -6298,7 +9136,7 @@ def resolve_post_processing(  # noqa: PLR0912
     Returns:
         Resolved post-processing configuration
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
 
     # Extract configs
     build_post = build_cfg.get("post_processing")
@@ -6453,9 +9291,85 @@ def _parse_include_with_dest(
     return inc, has_dest
 
 
+def _try_resolve_path_in_bases(
+    raw: Path | str,
+    source_bases: list[str] | None = None,
+    installed_bases: list[str] | None = None,
+) -> tuple[Path, Path | str] | None:
+    """Try to resolve a relative path in source_bases or installed_bases.
+
+    Checks if a relative path exists in the provided bases (source_bases first,
+    then installed_bases as fallback). Returns the resolved root and relative
+    path if found, None otherwise.
+
+    For glob patterns (e.g., "mypkg/**"), extracts the base path (e.g., "mypkg")
+    and checks if that exists in the bases.
+
+    Args:
+        raw: Relative path to resolve
+        source_bases: Optional list of source base directories (absolute paths)
+        installed_bases: Optional list of installed base directories
+            (absolute paths)
+
+    Returns:
+        Tuple of (root, rel) if path found in bases, None otherwise
+    """
+    logger = getAppLogger()
+    raw_str = str(raw)
+
+    # For glob patterns, extract the base path (part before glob)
+    if has_glob_chars(raw_str):
+        # Extract base path before first glob character
+        glob_chars = ["*", "?", "[", "{"]
+        glob_pos = min(
+            (raw_str.find(c) for c in glob_chars if c in raw_str),
+            default=len(raw_str),
+        )
+        # Find the last / before the glob (or use entire path if no /)
+        path_before_glob = raw_str[:glob_pos]
+        last_slash = path_before_glob.rfind("/")
+        if last_slash >= 0:
+            base_path_str = path_before_glob[:last_slash]
+        else:
+            # No slash found, entire path before glob is the base
+            base_path_str = path_before_glob
+    else:
+        # No glob, use entire path as base
+        base_path_str = raw_str
+
+    # Try source_bases first (higher priority)
+    if source_bases:
+        for base_str in source_bases:
+            base_path = Path(base_str).resolve()
+            candidate_path = base_path / base_path_str
+            if candidate_path.exists():
+                logger.trace(
+                    f"Found path in source_bases: {raw_str!r} "
+                    f"(base: {base_path_str!r}) in {base_str}"
+                )
+                return base_path, raw_str
+
+    # Try installed_bases as fallback
+    if installed_bases:
+        for base_str in installed_bases:
+            base_path = Path(base_str).resolve()
+            candidate_path = base_path / base_path_str
+            if candidate_path.exists():
+                logger.trace(
+                    f"Found path in installed_bases: {raw_str!r} "
+                    f"(base: {base_path_str!r}) in {base_str}"
+                )
+                return base_path, raw_str
+
+    return None
+
+
 def _normalize_path_with_root(
     raw: Path | str,
     context_root: Path | str,
+    *,
+    source_bases: list[str] | None = None,
+    installed_bases: list[str] | None = None,
 ) -> tuple[Path, Path | str]:
     """Normalize a user-provided path (from CLI or config).
 
@@ -6463,9 +9377,19 @@ def _normalize_path_with_root(
       * `/abs/path/**` → root=/abs/path, rel="**"
       * `/abs/path/`   → root=/abs/path, rel="**"  (treat as contents)
       * `/abs/path`    → root=/abs/path, rel="."   (treat as literal)
-    - If relative → root = context_root, path = raw (preserve string form)
+    - If relative → try context_root first, then source_bases, then installed_bases
+      * If found in bases, use that base as root
+      * Otherwise, use context_root as root
+
+    Args:
+        raw: Path to normalize
+        context_root: Default context root (config_dir or cwd)
+        source_bases: Optional list of source base directories
+            (for fallback lookup)
+        installed_bases: Optional list of installed base directories
+            (for fallback lookup)
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
     raw_path = Path(raw)
     rel: Path | str
 
@@ -6501,19 +9425,30 @@ def _normalize_path_with_root(
             root = raw_path.resolve()
             rel = "."
     else:
-        root = Path(context_root).resolve()
-        # preserve literal string if user provided one
-        rel = raw if isinstance(raw, str) else Path(raw)
+        # --- relative path case ---
+        # Try to resolve in bases first (source_bases > installed_bases)
+        resolved = _try_resolve_path_in_bases(
+            raw,
+            source_bases=source_bases,
+            installed_bases=installed_bases,
+        )
+        if resolved is not None:
+            root, rel = resolved
+        else:
+            # Not found in bases, use context_root
+            root = Path(context_root).resolve()
+            # preserve literal string if user provided one
+            rel = raw if isinstance(raw, str) else Path(raw)
 
     logger.trace(f"Normalized: raw={raw!r} → root={root}, rel={rel}")
     return root, rel
 
 
-def _extract_module_bases_from_includes(  # noqa: PLR0912
+def _extract_source_bases_from_includes(  # noqa: PLR0912
     includes: list[IncludeResolved],
     config_dir: Path,
 ) -> list[str]:
-    """Extract parent directories from includes to use as module_bases.
+    """Extract parent directories from includes to use as source_bases.
 
     For each include, extracts the first directory component that contains
     packages (e.g., "src/" from "src/mypkg/main.py" or "src/mypkg/**/*.py").
@@ -6527,7 +9462,7 @@ def _extract_module_bases_from_includes(  # noqa: PLR0912
     Returns:
         List of module base directories as absolute paths
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
     config_dir_resolved = config_dir.resolve()
     bases: list[str] = []
     seen_bases: set[str] = set()
@@ -6611,7 +9546,7 @@ def _get_first_level_modules_from_base(
 
     Package detection logic:
     - Directories with __init__.py are definitely packages (standard Python)
-    - Directories in module_bases are also considered packages (namespace
+    - Directories in source_bases are also considered packages (namespace
       packages, mimics modern Python behavior)
     - .py files at first level are modules
 
@@ -6622,7 +9557,7 @@ def _get_first_level_modules_from_base(
     Returns:
         Sorted list of first-level module/package names found in the base
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
     modules: list[str] = []
 
     # base_str is already an absolute path
@@ -6650,7 +9585,7 @@ def _get_first_level_modules_from_base(
                         base_path,
                     )
                 else:
-                    # Directory in module_bases is considered a package
+                    # Directory in source_bases is considered a package
                     # (namespace package, mimics modern Python)
                     modules.append(item.name)
                     logger.trace(
@@ -6675,26 +9610,26 @@ def _get_first_level_modules_from_base(
 
 
 def _get_first_level_modules_from_bases(
-    module_bases: list[str],
+    source_bases: list[str],
     config_dir: Path,
 ) -> list[str]:
-    """Get first-level module/package names from module_bases directories.
+    """Get first-level module/package names from source_bases directories.
 
-    Scans only the immediate children of each module_base directory (not
-    recursive). Returns a list preserving the order of module_bases, with
+    Scans only the immediate children of each source_base directory (not
+    recursive). Returns a list preserving the order of source_bases, with
     modules from each base sorted but not deduplicated across bases.
 
     Args:
-        module_bases: List of module base directory paths (absolute)
+        source_bases: List of source base directory paths (absolute)
         config_dir: Config directory (unused, kept for compatibility)
 
     Returns:
-        List of first-level module/package names found in module_bases,
-        preserving module_bases order
+        List of first-level module/package names found in source_bases,
+        preserving source_bases order
     """
     modules: list[str] = []
 
-    for base_str in module_bases:
+    for base_str in source_bases:
         base_modules = _get_first_level_modules_from_base(base_str, config_dir)
         modules.extend(base_modules)
 
@@ -6755,22 +9690,22 @@ def _has_main_function(module_path: Path) -> bool:
 
 def _infer_packages_from_includes(  # noqa: C901, PLR0912, PLR0915
     includes: list[IncludeResolved],
-    module_bases: list[str],
+    source_bases: list[str],
     config_dir: Path,
 ) -> list[str]:
     """Infer package names from include paths using multiple strategies.
 
     Uses strategies in priority order:
-    1. Filter by module_bases (if configured)
+    1. Filter by source_bases (if configured)
     2. Check __init__.py (definitive package markers)
     3. Check __main__.py (executable package markers)
     4. Extract from common prefix
-    5. Validate against module_bases (ensure exists)
+    5. Validate against source_bases (ensure exists)
     6. Use most common first-level directory (when multiple candidates)
 
     Args:
         includes: List of resolved include patterns
-        module_bases: List of module base directory paths
+        source_bases: List of source base directory paths
         config_dir: Config directory for resolving relative paths
 
     Returns:
@@ -6779,7 +9714,7 @@ def _infer_packages_from_includes(  # noqa: C901, PLR0912, PLR0915
     if not includes:
         return []
 
-    logger = get_app_logger()
+    logger = getAppLogger()
     candidates: set[str] = set()
     path_strings: list[str] = []
 
@@ -6796,12 +9731,12 @@ def _infer_packages_from_includes(  # noqa: C901, PLR0912, PLR0915
     if not path_strings:
         return []
 
-    # Strategy 1: Filter by module_bases (if configured)
+    # Strategy 1: Filter by source_bases (if configured)
     filtered_paths: list[str] = []
-    if module_bases:
+    if source_bases:
         for path_str in path_strings:
             # Check if path is within any module_base
-            for base_str in module_bases:
+            for base_str in source_bases:
                 # base_str is already an absolute path
                 base_path = Path(base_str).resolve()
                 # Try to resolve path relative to config_dir
@@ -6819,7 +9754,7 @@ def _infer_packages_from_includes(  # noqa: C901, PLR0912, PLR0915
                     # Path resolution failed, skip
                     continue
     else:
-        # No module_bases, use all paths
+        # No source_bases, use all paths
         filtered_paths = path_strings
 
     if not filtered_paths:
@@ -6871,9 +9806,9 @@ def _infer_packages_from_includes(  # noqa: C901, PLR0912, PLR0915
                 except (OSError, ValueError):
                     continue
 
-    # Strategy 5: Validate against module_bases (ensure exists)
-    if module_bases and candidates:
-        valid_modules = _get_first_level_modules_from_bases(module_bases, config_dir)
+    # Strategy 5: Validate against source_bases (ensure exists)
+    if source_bases and candidates:
+        valid_modules = _get_first_level_modules_from_bases(source_bases, config_dir)
         candidates = {c for c in candidates if c in valid_modules}
 
     # Strategy 6: If multiple candidates, use most common first-level directory
@@ -6883,8 +9818,8 @@ def _infer_packages_from_includes(  # noqa: C901, PLR0912, PLR0915
         for path_str in filtered_paths:
             try:
                 path_obj = (config_dir / path_str).resolve()
-                # Try to find first-level directory relative to module_bases
-                for base_str in module_bases:
+                # Try to find first-level directory relative to source_bases
+                for base_str in source_bases:
                     # base_str is already an absolute path
                     base_path = Path(base_str).resolve()
                     try:
@@ -6979,8 +9914,10 @@ def _resolve_includes(  # noqa: PLR0912
     args: argparse.Namespace,
     config_dir: Path,
     cwd: Path,
+    source_bases: list[str] | None = None,
+    installed_bases: list[str] | None = None,
 ) -> list[IncludeResolved]:
-    logger = get_app_logger()
+    logger = getAppLogger()
     logger.trace(
         f"[resolve_includes] Starting with"
         f" {len(resolved_cfg.get('include', []))} config includes"
@@ -7006,7 +9943,12 @@ def _resolve_includes(  # noqa: PLR0912
                 # Object format: {"path": "...", "dest": "..."}
                 path_str = raw.get("path", "")
                 dest_str = raw.get("dest")
-                root, rel = _normalize_path_with_root(path_str, config_dir)
+                root, rel = _normalize_path_with_root(
+                    path_str,
+                    config_dir,
+                    source_bases=source_bases,
+                    installed_bases=installed_bases,
+                )
                 inc = make_includeresolved(rel, root, "config")
                 if dest_str:
                     # dest is relative to output dir, no normalization
@@ -7014,7 +9956,12 @@ def _resolve_includes(  # noqa: PLR0912
                 includes.append(inc)
             else:
                 # String format: "path/to/files"
-                root, rel = _normalize_path_with_root(raw, config_dir)
+                root, rel = _normalize_path_with_root(
+                    raw,
+                    config_dir,
+                    source_bases=source_bases,
+                    installed_bases=installed_bases,
+                )
                 includes.append(make_includeresolved(rel, root, "config"))
 
     # Add-on includes (extend, not override)
@@ -7061,7 +10008,7 @@ def _resolve_excludes(
     cwd: Path,
     root_cfg: RootConfig | None,
 ) -> list[PathResolved]:
-    logger = get_app_logger()
+    logger = getAppLogger()
     logger.trace(
         f"[resolve_excludes] Starting with"
         f" {len(resolved_cfg.get('exclude', []))} config excludes"
@@ -7139,7 +10086,7 @@ def _resolve_output(
     config_dir: Path,
     cwd: Path,
 ) -> PathResolved:
-    logger = get_app_logger()
+    logger = getAppLogger()
     logger.trace("[resolve_output] Resolving output directory")
 
     if getattr(args, "out", None):
@@ -7168,7 +10115,7 @@ def resolve_build_config(  # noqa: C901, PLR0912, PLR0915
     Applies CLI overrides, normalizes paths, merges gitignore behavior,
     and attaches provenance metadata.
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
     logger.trace("[resolve_build_config] Starting resolution for config")
 
     # Make a mutable copy
@@ -7184,7 +10131,7 @@ def resolve_build_config(  # noqa: C901, PLR0912, PLR0915
     # Set log_level if not present (for tests that call resolve_build_config directly)
     if "log_level" not in resolved_cfg:
         root_log = None
-        log_level = logger.determine_log_level(args=args, root_log_level=root_log)
+        log_level = logger.determineLogLevel(args=args, root_log_level=root_log)
         resolved_cfg["log_level"] = log_level
 
     # root provenance for all resolutions
@@ -7193,18 +10140,71 @@ def resolve_build_config(  # noqa: C901, PLR0912, PLR0915
         "config_root": config_dir,
     }
 
+    # ------------------------------
+    # Auto-discover installed packages (resolved early for use in includes)
+    # ------------------------------
+    if "auto_discover_installed_packages" not in resolved_cfg:
+        resolved_cfg["auto_discover_installed_packages"] = True
+
+    # ------------------------------
+    # Installed packages bases (resolved early for use in includes)
+    # ------------------------------
+    # Convert str to list[str] if needed, then resolve relative paths to absolute
+    # Priority: user-specified > auto-discovery > empty list
+    if "installed_bases" in resolved_cfg:
+        installed_bases = resolved_cfg["installed_bases"]
+        config_installed_bases = (
+            [installed_bases] if isinstance(installed_bases, str) else installed_bases
+        )
+        # Resolve relative paths to absolute
+        resolved_installed_bases: list[str] = []
+        for base in config_installed_bases:
+            base_path = (config_dir / base).resolve()
+            resolved_installed_bases.append(str(base_path))
+        resolved_cfg["installed_bases"] = resolved_installed_bases
+    # Not specified - use auto-discovery if enabled
+    elif resolved_cfg["auto_discover_installed_packages"]:
+        discovered_bases = discover_installed_packages_roots()
+        resolved_cfg["installed_bases"] = discovered_bases
+        if discovered_bases:
+            logger.debug(
+                "[INSTALLED_BASES] Auto-discovered %d installed package root(s): %s",
+                len(discovered_bases),
+                shorten_paths_for_display(
+                    discovered_bases, cwd=cwd, config_dir=config_dir
+                ),
+            )
+    else:
+        # Auto-discovery disabled and not specified - use empty list
+        resolved_cfg["installed_bases"] = []
+
     # --- Includes ---------------------------
+    # Resolve source_bases to absolute paths for include resolution
+    # (they may be relative paths from config)
+    resolved_source_bases: list[str] | None = None
+    if "source_bases" in resolved_cfg:
+        source_bases_raw = resolved_cfg["source_bases"]
+        source_bases_list = (
+            [source_bases_raw]
+            if isinstance(source_bases_raw, str)
+            else source_bases_raw
+        )
+        resolved_source_bases = [
+            str((config_dir / base).resolve()) for base in source_bases_list
+        ]
     resolved_cfg["include"] = _resolve_includes(
         resolved_cfg,
         args=args,
         config_dir=config_dir,
         cwd=cwd,
+        source_bases=resolved_source_bases,
+        installed_bases=resolved_cfg.get("installed_bases"),
     )
     logger.trace(
         f"[resolve_build_config] Resolved {len(resolved_cfg['include'])} include(s)"
     )
 
-    # --- Extract module_bases from includes (before resolving module_bases) ---
+    # --- Extract source_bases from includes (before resolving source_bases) ---
     # Separate CLI and config includes for priority ordering
     cli_includes: list[IncludeResolved] = [
         inc for inc in resolved_cfg["include"] if inc["origin"] == "cli"
@@ -7214,8 +10214,8 @@ def resolve_build_config(  # noqa: C901, PLR0912, PLR0915
     ]
 
     # Extract bases from includes (CLI first, then config)
-    cli_bases = _extract_module_bases_from_includes(cli_includes, config_dir)
-    config_bases = _extract_module_bases_from_includes(config_includes, config_dir)
+    cli_bases = _extract_source_bases_from_includes(cli_includes, config_dir)
+    config_bases = _extract_source_bases_from_includes(config_includes, config_dir)
 
     # --- Excludes ---------------------------
     resolved_cfg["exclude"] = _resolve_excludes(
@@ -7319,36 +10319,36 @@ def resolve_build_config(  # noqa: C901, PLR0912, PLR0915
     # Module bases
     # ------------------------------
     # Convert str to list[str] if needed, then merge with bases from includes
-    if "module_bases" in resolved_cfg:
-        module_bases = resolved_cfg["module_bases"]
-        config_module_bases = (
-            [module_bases] if isinstance(module_bases, str) else module_bases
+    if "source_bases" in resolved_cfg:
+        source_bases = resolved_cfg["source_bases"]
+        config_source_bases = (
+            [source_bases] if isinstance(source_bases, str) else source_bases
         )
     else:
-        config_module_bases = DEFAULT_MODULE_BASES
+        config_source_bases = DEFAULT_SOURCE_BASES
 
-    # Merge with priority: CLI includes > config includes > config module_bases >
+    # Merge with priority: CLI includes > config includes > config source_bases >
     # defaults
     # Deduplicate while preserving priority order
     merged_bases: list[str] = []
     seen_bases: set[str] = set()
 
     # Add CLI bases first (highest priority)
-    # (already absolute from _extract_module_bases_from_includes)
+    # (already absolute from _extract_source_bases_from_includes)
     for base in cli_bases:
         if base not in seen_bases:
             seen_bases.add(base)
             merged_bases.append(base)
 
     # Add config bases (second priority)
-    # (already absolute from _extract_module_bases_from_includes)
+    # (already absolute from _extract_source_bases_from_includes)
     for base in config_bases:
         if base not in seen_bases:
             seen_bases.add(base)
             merged_bases.append(base)
 
-    # Add config module_bases (third priority) - resolve relative paths to absolute
-    for base in config_module_bases:
+    # Add config source_bases (third priority) - resolve relative paths to absolute
+    for base in config_source_bases:
         # Resolve relative paths to absolute
         base_path = (config_dir / base).resolve()
         base_abs = str(base_path)
@@ -7356,16 +10356,16 @@ def resolve_build_config(  # noqa: C901, PLR0912, PLR0915
             seen_bases.add(base_abs)
             merged_bases.append(base_abs)
 
-    # Add defaults last (lowest priority, but should already be in config_module_bases)
+    # Add defaults last (lowest priority, but should already be in config_source_bases)
     # Resolve relative paths to absolute
-    for base in DEFAULT_MODULE_BASES:
+    for base in DEFAULT_SOURCE_BASES:
         base_path = (config_dir / base).resolve()
         base_abs = str(base_path)
         if base_abs not in seen_bases:
             seen_bases.add(base_abs)
             merged_bases.append(base_abs)
 
-    resolved_cfg["module_bases"] = merged_bases
+    resolved_cfg["source_bases"] = merged_bases
     if cli_bases or config_bases:
         # Use display helpers for logging
         display_bases = shorten_paths_for_display(
@@ -7384,6 +10384,12 @@ def resolve_build_config(  # noqa: C901, PLR0912, PLR0915
             display_config,
             display_bases,
         )
+
+    # ------------------------------
+    # Include installed dependencies
+    # ------------------------------
+    if "include_installed_dependencies" not in resolved_cfg:
+        resolved_cfg["include_installed_dependencies"] = False
 
     # ------------------------------
     # Main mode
@@ -7512,15 +10518,15 @@ def resolve_build_config(  # noqa: C901, PLR0912, PLR0915
     # 4. ✅ Main function detection
     # 5. ✅ Most common package in includes (handled in step 3)
     # 6. ✅ Single module auto-detection
-    # 7. ✅ First package in module_bases order
+    # 7. ✅ First package in source_bases order
     package = resolved_cfg.get("package")
-    module_bases_list = resolved_cfg.get("module_bases", [])
+    source_bases_list = resolved_cfg.get("source_bases", [])
     config_includes = resolved_cfg.get("include", [])
 
     # Step 3: Infer from include paths (if package not set and includes exist)
     if not package and config_includes:
         inferred_packages = _infer_packages_from_includes(
-            config_includes, module_bases_list, config_dir
+            config_includes, source_bases_list, config_dir
         )
         if inferred_packages:
             # Use first package if single, or most common if multiple (already handled)
@@ -7533,15 +10539,15 @@ def resolve_build_config(  # noqa: C901, PLR0912, PLR0915
 
     # Step 4: Main function detection (if package not set and multiple modules exist)
     package = resolved_cfg.get("package")
-    if not package and module_bases_list:
+    if not package and source_bases_list:
         # Check if multiple modules exist
-        all_modules = _get_first_level_modules_from_bases(module_bases_list, config_dir)
+        all_modules = _get_first_level_modules_from_bases(source_bases_list, config_dir)
         if len(all_modules) > 1:
             # Try to find main function in modules
             for module_name in all_modules:
                 # Find module path
                 module_path: Path | None = None
-                for base_str in module_bases_list:
+                for base_str in source_bases_list:
                     base_path = (config_dir / base_str).resolve()
                     module_dir = base_path / module_name
                     module_file = base_path / f"{module_name}.py"
@@ -7563,11 +10569,11 @@ def resolve_build_config(  # noqa: C901, PLR0912, PLR0915
 
     # Step 6: Single module auto-detection (if package not set)
     package = resolved_cfg.get("package")
-    if not package and module_bases_list:
+    if not package and source_bases_list:
         # Find the first module_base with exactly 1 module
         detected_module: str | None = None
         detected_base: str | None = None
-        for base_str in module_bases_list:
+        for base_str in source_bases_list:
             base_modules = _get_first_level_modules_from_base(base_str, config_dir)
             if len(base_modules) == 1:
                 # Found a base with exactly 1 module
@@ -7585,24 +10591,24 @@ def resolve_build_config(  # noqa: C901, PLR0912, PLR0915
                 detected_base,
             )
 
-    # Step 7: First package in module_bases order (if package not set)
+    # Step 7: First package in source_bases order (if package not set)
     package = resolved_cfg.get("package")
-    if not package and module_bases_list:
-        all_modules = _get_first_level_modules_from_bases(module_bases_list, config_dir)
+    if not package and source_bases_list:
+        all_modules = _get_first_level_modules_from_bases(source_bases_list, config_dir)
         if len(all_modules) > 0:
-            # Use first module found (preserves module_bases order)
+            # Use first module found (preserves source_bases order)
             resolved_cfg["package"] = all_modules[0]
             logger.info(
-                "Package name '%s' selected from module_bases (first found). "
+                "Package name '%s' selected from source_bases (first found). "
                 "Set 'package' in config to override.",
                 all_modules[0],
             )
 
     # ------------------------------
-    # Auto-set includes from package and module_bases
+    # Auto-set includes from package and source_bases
     # ------------------------------
     # If no includes were provided (configless or config has no includes),
-    # automatically set includes based on package and module_bases.
+    # automatically set includes based on package and source_bases.
     # This must run AFTER pyproject metadata extraction so package from
     # pyproject.toml is available.
     has_cli_includes = bool(
@@ -7615,7 +10621,7 @@ def resolve_build_config(  # noqa: C901, PLR0912, PLR0915
     # (even if empty, explicit setting means don't auto-set)
     has_explicit_config_includes = "include" in build_cfg
     package = resolved_cfg.get("package")
-    module_bases_list = resolved_cfg.get("module_bases", [])
+    source_bases_list = resolved_cfg.get("source_bases", [])
 
     # Auto-set includes based on package (if package exists and no includes provided)
     if (
@@ -7623,24 +10629,24 @@ def resolve_build_config(  # noqa: C901, PLR0912, PLR0915
         and not has_cli_includes
         and not has_config_includes
         and not has_explicit_config_includes
-        and module_bases_list
+        and source_bases_list
     ):
-        # Package exists and is found in module_bases
-        # Get first-level modules from module_bases for this check
+        # Package exists and is found in source_bases
+        # Get first-level modules from source_bases for this check
         first_level_modules = _get_first_level_modules_from_bases(
-            module_bases_list, config_dir
+            source_bases_list, config_dir
         )
         if package in first_level_modules:
             logger.debug(
-                "Auto-setting includes to package '%s' found in module_bases: %s",
+                "Auto-setting includes to package '%s' found in source_bases: %s",
                 package,
-                module_bases_list,
+                source_bases_list,
             )
 
             # Find which module_base contains the package
             # Can be either a directory (package) or a .py file (module)
             package_path: str | None = None
-            for base_str in module_bases_list:
+            for base_str in source_bases_list:
                 # base_str is already an absolute path
                 base_path = Path(base_str).resolve()
                 package_dir = base_path / package
@@ -7660,7 +10666,7 @@ def resolve_build_config(  # noqa: C901, PLR0912, PLR0915
                     break
 
             if package_path:
-                # Set includes to the package found in module_bases
+                # Set includes to the package found in source_bases
                 # For directories, add trailing slash to ensure recursive matching
                 # (build.py handles directories with trailing slash as recursive)
                 package_path_str = str(package_path)
@@ -7716,7 +10722,7 @@ def resolve_config(
 
     If invoked standalone, ensures the global logger reflects the resolved log level.
     If called after load_and_validate_config(), this is a harmless no-op re-sync."""
-    logger = get_app_logger()
+    logger = getAppLogger()
     root_cfg = cast_hint(RootConfig, dict(root_input))
 
     logger.trace("[resolve_config] Resolving flat config")
@@ -7744,7 +10750,7 @@ def resolve_config(
     # Log level
     # ------------------------------
     root_log = root_cfg.get("log_level")
-    log_level = logger.determine_log_level(args=args, root_log_level=root_log)
+    log_level = logger.determineLogLevel(args=args, root_log_level=root_log)
 
     # --- sync runtime ---
     logger.setLevel(log_level)
@@ -7765,6 +10771,57 @@ def resolve_config(
     resolved["validate_config"] = False
 
     return resolved
+
+
+# === serger.config.__init__ ===
+# src/serger/config/__init__.py
+
+"""Configuration handling for serger.
+
+This module provides configuration loading, parsing, validation, and resolution.
+"""
+
+
+__all__ = [  # noqa: RUF022
+    # config_loader
+    "can_run_configless",
+    "find_config",
+    "load_and_validate_config",
+    "load_config",
+    "parse_config",
+    # config_resolve
+    "PyprojectMetadata",
+    "extract_pyproject_metadata",
+    "resolve_build_config",
+    "resolve_config",
+    "resolve_post_processing",
+    # config_types
+    "CommentsMode",
+    "DocstringMode",
+    "DocstringModeLocation",
+    "DocstringModeSimple",
+    "ExternalImportMode",
+    "IncludeConfig",
+    "IncludeResolved",
+    "InternalImportMode",
+    "MetaBuildConfigResolved",
+    "ModuleActionFull",
+    "ModuleMode",
+    "OriginType",
+    "PathResolved",
+    "PostCategoryConfig",
+    "PostCategoryConfigResolved",
+    "PostProcessingConfig",
+    "PostProcessingConfigResolved",
+    "RootConfig",
+    "RootConfigResolved",
+    "ShimSetting",
+    "StitchMode",
+    "ToolConfig",
+    "ToolConfigResolved",
+    # config_validate
+    "validate_config",
+]
 
 
 # === serger.main_config ===
@@ -8000,22 +11057,22 @@ def find_main_function(  # noqa: PLR0912, C901, PLR0915
                 # If we can't read the file, skip the check
                 pass
 
-    # Extract module_bases from config for external files
-    # module_bases is validated and normalized to list[str] in config resolution
+    # Extract source_bases from config for external files
+    # source_bases is validated and normalized to list[str] in config resolution
     # It's always present in RootConfigResolved, but .get() returns object | None
-    module_bases_raw = config.get("module_bases")
-    module_bases: list[str] | None = None
-    if module_bases_raw is not None:  # pyright: ignore[reportUnnecessaryComparison]
-        # Type narrowing: config is RootConfigResolved where module_bases is list[str]
-        # Cast is safe because module_bases is validated in config resolution
+    source_bases_raw = config.get("source_bases")
+    source_bases: list[str] | None = None
+    if source_bases_raw is not None:  # pyright: ignore[reportUnnecessaryComparison]
+        # Type narrowing: config is RootConfigResolved where source_bases is list[str]
+        # Cast is safe because source_bases is validated in config resolution
         # mypy sees cast as redundant, but pyright needs it for type narrowing
-        module_bases = [str(mb) for mb in cast("list[str]", module_bases_raw)]  # type: ignore[redundant-cast]  # pyright: ignore[reportUnnecessaryCast]
+        source_bases = [str(mb) for mb in cast("list[str]", source_bases_raw)]  # type: ignore[redundant-cast]  # pyright: ignore[reportUnnecessaryCast]
 
     module_to_file: dict[str, Path] = {}
     for file_path in file_paths:
         include = file_to_include.get(file_path)
         module_name = derive_module_name(
-            file_path, package_root, include, module_bases=module_bases
+            file_path, package_root, include, source_bases=source_bases
         )
 
         # If package_root is a package directory, preserve package structure
@@ -8570,7 +11627,7 @@ def verify_compiles(file_path: Path) -> bool:
     Returns:
         True if file compiles successfully, False otherwise
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
     try:
         py_compile.compile(str(file_path), doraise=True)
     except py_compile.PyCompileError as e:
@@ -8664,7 +11721,7 @@ def execute_post_processing(
     validate_required_keys(
         config, {"enabled", "category_order", "categories"}, "config"
     )
-    logger = get_app_logger()
+    logger = getAppLogger()
 
     if not config["enabled"]:
         logger.debug("Post-processing disabled, skipping")
@@ -8763,7 +11820,7 @@ def verify_executes(file_path: Path) -> bool:
     Returns:
         True if script executes without immediate errors, False otherwise
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
 
     # Check if file exists first
     if not file_path.exists():
@@ -8838,7 +11895,7 @@ def _cleanup_error_files(out_path: Path) -> None:  # pyright: ignore[reportUnuse
     Args:
         out_path: Path to the output file (e.g., dist/package.py)
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
     pattern = _get_error_file_pattern(out_path)
     error_files = list(out_path.parent.glob(pattern))
     if error_files:
@@ -8870,7 +11927,7 @@ def _write_error_file(  # pyright: ignore[reportUnusedFunction]
     Returns:
         Path to the written error file
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
     now = datetime.now(timezone.utc)
     date_suffix = now.strftime("%Y_%m_%d")
     stem = out_path.stem
@@ -8968,7 +12025,7 @@ def post_stitch_processing(
         if the file doesn't compile before post-processing (which should never happen
         if in-memory compilation check was performed first).
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
     logger.debug("Starting post-stitch processing for %s", out_path)
 
     # Compile before post-processing
@@ -9061,7 +12118,7 @@ def extract_version(pyproject_path: Path) -> str:
     return match.group(1) if match else "unknown"
 
 
-def extract_commit(root_path: Path) -> str:
+def extract_commit(root_path: Path) -> str:  # noqa: PLR0915
     """Extract git commit hash.
 
     Only embeds commit hash if in CI or release tag context.
@@ -9072,26 +12129,141 @@ def extract_commit(root_path: Path) -> str:
     Returns:
         Short commit hash, or "unknown (local build)" if not in CI
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
+    # Comprehensive logging for troubleshooting
+    in_ci = is_ci()
+    ci_env = os.getenv("CI")
+    github_actions = os.getenv("GITHUB_ACTIONS")
+    git_tag = os.getenv("GIT_TAG")
+    github_ref = os.getenv("GITHUB_REF")
+    logger.trace(
+        "extract_commit called: root_path=%s, in_ci=%s, CI=%s, GITHUB_ACTIONS=%s, "
+        "GIT_TAG=%s, GITHUB_REF=%s",
+        root_path,
+        in_ci,
+        ci_env,
+        github_actions,
+        git_tag,
+        github_ref,
+    )
+    logger.trace(
+        "extract_commit: root_path=%s, in_ci=%s, CI=%s, GITHUB_ACTIONS=%s, "
+        "GIT_TAG=%s, GITHUB_REF=%s",
+        root_path,
+        in_ci,
+        ci_env,
+        github_actions,
+        git_tag,
+        github_ref,
+    )
+
     # Only embed commit hash if in CI or release tag context
-    if not (os.getenv("CI") or os.getenv("GIT_TAG") or os.getenv("GITHUB_REF")):
-        return "unknown (local build)"
+    if not in_ci:
+        result = "unknown (local build)"
+        logger.trace("extract_commit: Not in CI context, returning: %s", result)
+        return result
+
+    # Resolve path and verify it exists
+    resolved_path = root_path.resolve()
+    logger.info("extract_commit: resolved_path=%s", resolved_path)
+    logger.trace("extract_commit: resolved_path=%s", resolved_path)
+
+    if not resolved_path.exists():
+        logger.warning("Git root path does not exist: %s", resolved_path)
+        logger.trace("extract_commit: Path does not exist: %s", resolved_path)
+        return "unknown"
+
+    # Check if .git exists (directory or file for worktrees)
+    git_dir = resolved_path / ".git"
+    parent_git = resolved_path.parent / ".git"
+    git_dir_exists = git_dir.exists()
+    parent_git_exists = parent_git.exists()
+    logger.info(
+        "extract_commit: git_dir=%s (exists=%s), parent_git=%s (exists=%s)",
+        git_dir,
+        git_dir_exists,
+        parent_git,
+        parent_git_exists,
+    )
+    logger.trace(
+        "extract_commit: git_dir=%s (exists=%s), parent_git=%s (exists=%s)",
+        git_dir,
+        git_dir_exists,
+        parent_git,
+        parent_git_exists,
+    )
+
+    if not (git_dir_exists or parent_git_exists):
+        logger.warning("No .git directory found at %s", resolved_path)
+        logger.trace("extract_commit: No .git found, returning 'unknown'")
+        return "unknown"
+
+    commit_hash = "unknown"
     try:
-        result = subprocess.run(
+        # Convert Path to string for subprocess compatibility
+        cwd_str = str(resolved_path)
+        logger.info("extract_commit: Running git rev-parse in: %s", cwd_str)
+        logger.trace("extract_commit: Running git rev-parse in: %s", cwd_str)
+
+        git_result = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],  # noqa: S607
-            cwd=root_path,
+            cwd=cwd_str,
             capture_output=True,
             text=True,
             check=True,
         )
-        return result.stdout.strip()
+        commit_hash = git_result.stdout.strip()
+        logger.info(
+            "extract_commit: git rev-parse stdout=%r, stderr=%r",
+            git_result.stdout,
+            git_result.stderr,
+        )
+        logger.trace(
+            "extract_commit: git rev-parse stdout=%r, stderr=%r",
+            git_result.stdout,
+            git_result.stderr,
+        )
+
+        if not commit_hash:
+            logger.warning("git rev-parse returned empty string")
+            logger.trace("extract_commit: Empty commit hash, using 'unknown'")
+            commit_hash = "unknown"
+        else:
+            logger.info("extract_commit: Successfully extracted: %s", commit_hash)
+            logger.trace("extract_commit: Successfully extracted: %s", commit_hash)
 
     except subprocess.CalledProcessError as e:
-        logger.warning("git rev-parse failed: %s", e.stderr.strip())
+        stderr_msg = e.stderr.strip() or "no error message"
+        logger.warning(
+            "git rev-parse failed at %s: %s (stderr: %s, returncode: %s)",
+            resolved_path,
+            stderr_msg,
+            stderr_msg,
+            e.returncode,
+        )
+        logger.trace(
+            "extract_commit: git rev-parse failed: returncode=%s, stderr=%s",
+            e.returncode,
+            stderr_msg,
+        )
     except FileNotFoundError:
         logger.warning("git not available in environment")
+        logger.trace("extract_commit: git not found in PATH")
 
-    return "unknown"
+    # In CI, always log the final commit value for debugging
+    if in_ci:
+        logger.info(
+            "Final commit hash for embedding: %s (from %s)",
+            commit_hash,
+            resolved_path,
+        )
+        logger.trace(
+            "extract_commit: FINAL RESULT: %s (from %s)",
+            commit_hash,
+            resolved_path,
+        )
+
+    return commit_hash
 
 
 # Maximum number of lines to read when checking if a file is a serger build
@@ -9200,7 +12372,7 @@ def split_imports(  # noqa: C901, PLR0912, PLR0915
         list of import statement strings (empty for "keep" mode), and body_text
         is the source with imports removed according to the mode
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
     try:
         tree = ast.parse(text)
     except SyntaxError:
@@ -9829,7 +13001,7 @@ def process_docstrings(text: str, mode: DocstringMode) -> str:  # noqa: C901, PL
     Returns:
         Source code with docstrings processed according to mode
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
 
     # Handle simple string modes
     if isinstance(mode, str):
@@ -10332,6 +13504,72 @@ def _extract_internal_imports_for_deps(  # noqa: PLR0912
     return internal_imports
 
 
+def _deterministic_topological_sort(
+    deps: dict[str, set[str]],
+    module_to_file: dict[str, Path],
+) -> list[str]:
+    """Perform deterministic topological sort using file path as tie-breaker.
+
+    When multiple nodes have zero in-degree, they are sorted by their file path
+    to ensure deterministic ordering. This guarantees reproducible builds even
+    when multiple valid topological orderings exist.
+
+    Args:
+        deps: Dependency graph mapping module names to sets of dependencies
+        module_to_file: Mapping from module names to file paths
+
+    Returns:
+        Topologically sorted list of module names
+
+    Raises:
+        RuntimeError: If circular imports are detected
+    """
+    # Calculate in-degrees for all nodes
+    # In-degree = number of dependencies this node has (how many nodes it depends on)
+    in_degree: dict[str, int] = {
+        node: len(node_deps) for node, node_deps in deps.items()
+    }
+
+    # Build reverse dependency graph for efficient edge removal
+    # reverse_deps[dep] = set of nodes that depend on dep
+    reverse_deps: dict[str, set[str]] = {node: set() for node in deps}
+    for node, node_deps in deps.items():
+        for dep in node_deps:
+            if dep in reverse_deps:
+                reverse_deps[dep].add(node)
+
+    # Start with nodes that have zero in-degree (no dependencies)
+    # Sort by file path to ensure deterministic ordering
+    zero_in_degree = [node for node, degree in in_degree.items() if degree == 0]
+    zero_in_degree.sort(key=lambda node: str(module_to_file.get(node, Path())))
+
+    result: list[str] = []
+
+    while zero_in_degree:
+        # Process nodes in sorted order (by file path) for determinism
+        # Sort again before processing to maintain determinism
+        zero_in_degree.sort(key=lambda node: str(module_to_file.get(node, Path())))
+        node = zero_in_degree.pop(0)
+        result.append(node)
+
+        # Remove edges from this node and update in-degrees of dependents
+        # When we process a node, all nodes that depend on it can have their
+        # in-degree decremented (since this dependency is now satisfied)
+        for dependent in reverse_deps.get(node, set()):
+            in_degree[dependent] -= 1
+            if in_degree[dependent] == 0:
+                zero_in_degree.append(dependent)
+
+    # Check for circular dependencies
+    if len(result) != len(deps):
+        # Find nodes that weren't processed (part of a cycle)
+        remaining = set(deps) - set(result)
+        msg = f"Circular dependency detected involving: {sorted(remaining)}"
+        raise RuntimeError(msg)
+
+    return result
+
+
 def compute_module_order(  # noqa: C901, PLR0912
     file_paths: list[Path],
     package_root: Path,
@@ -10339,8 +13577,8 @@ def compute_module_order(  # noqa: C901, PLR0912
     file_to_include: dict[Path, IncludeResolved],
     *,
     detected_packages: set[str],
-    module_bases: list[str] | None = None,
-    user_provided_module_bases: list[str] | None = None,
+    source_bases: list[str] | None = None,
+    user_provided_source_bases: list[str] | None = None,
 ) -> list[Path]:
     """Compute correct module order based on import dependencies.
 
@@ -10353,8 +13591,8 @@ def compute_module_order(  # noqa: C901, PLR0912
         _package_name: Root package name (unused, kept for API consistency)
         file_to_include: Mapping of file path to its include (for dest access)
         detected_packages: Pre-detected package names
-        module_bases: Optional list of module base directories for external files
-        user_provided_module_bases: Optional list of user-provided module bases
+        source_bases: Optional list of module base directories for external files
+        user_provided_source_bases: Optional list of user-provided module bases
             (from config, excludes auto-discovered package directories)
 
     Returns:
@@ -10363,7 +13601,7 @@ def compute_module_order(  # noqa: C901, PLR0912
     Raises:
         RuntimeError: If circular imports are detected
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
     # Map file paths to derived module names
     file_to_module: dict[Path, str] = {}
     module_to_file: dict[str, Path] = {}
@@ -10373,8 +13611,9 @@ def compute_module_order(  # noqa: C901, PLR0912
             file_path,
             package_root,
             include,
-            module_bases=module_bases,
-            user_provided_module_bases=user_provided_module_bases,
+            source_bases=source_bases,
+            user_provided_source_bases=user_provided_source_bases,
+            detected_packages=detected_packages,
         )
         file_to_module[file_path] = module_name
         module_to_file[module_name] = file_path
@@ -10475,14 +13714,31 @@ def compute_module_order(  # noqa: C901, PLR0912
                         ) or dep_module.startswith(prefix_tuple)
                         if matches and dep_module != module_name:
                             deps[module_name].add(dep_module)
+                else:
+                    # mod == matched_package
+                    # (e.g., "from apathetic_logging import Logger")
+                    # This is a package-level import, so depend on package.__init__
+                    # (package-level imports need package.__init__ loaded first)
+                    # Sort for deterministic iteration order
+                    for dep_module in sorted(deps.keys()):
+                        # Match if dep_module equals the package or starts with
+                        # package + "." This ensures package-level imports depend
+                        # on package.__init__
+                        if (
+                            dep_module == matched_package
+                            or dep_module.startswith(matched_package + ".")
+                        ) and dep_module != module_name:
+                            logger.trace(
+                                "[DEPS] Package-level import: %s -> %s (from %s)",
+                                module_name,
+                                dep_module,
+                                mod,
+                            )
+                            deps[module_name].add(dep_module)
 
-    # detect circular imports first
-    try:
-        sorter = graphlib.TopologicalSorter(deps)
-        topo_modules = list(sorter.static_order())
-    except graphlib.CycleError as e:
-        msg = f"Circular dependency detected: {e.args[1] if e.args else 'unknown'}"
-        raise RuntimeError(msg) from e
+    # Perform deterministic topological sort using file path as tie-breaker
+    # This ensures reproducible builds even when multiple valid orderings exist
+    topo_modules = _deterministic_topological_sort(deps, module_to_file)
 
     # Convert back to file paths
     topo_paths = [module_to_file[mod] for mod in topo_modules if mod in module_to_file]
@@ -10497,8 +13753,8 @@ def suggest_order_mismatch(
     *,
     detected_packages: set[str],
     topo_paths: list[Path] | None = None,
-    module_bases: list[str] | None = None,
-    user_provided_module_bases: list[str] | None = None,
+    source_bases: list[str] | None = None,
+    user_provided_source_bases: list[str] | None = None,
 ) -> None:
     """Warn if module order violates dependencies.
 
@@ -10511,11 +13767,11 @@ def suggest_order_mismatch(
         topo_paths: Optional pre-computed topological order. If provided,
                     skips recomputing the order. If None, computes it via
                     compute_module_order.
-        module_bases: Optional list of module base directories for external files
-        user_provided_module_bases: Optional list of user-provided module bases
+        source_bases: Optional list of module base directories for external files
+        user_provided_source_bases: Optional list of user-provided module bases
             (from config, excludes auto-discovered package directories)
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
     if topo_paths is None:
         topo_paths = compute_module_order(
             order_paths,
@@ -10523,7 +13779,7 @@ def suggest_order_mismatch(
             _package_name,
             file_to_include,
             detected_packages=detected_packages,
-            module_bases=module_bases,
+            source_bases=source_bases,
         )
 
     # compare order_paths to topological sort
@@ -10541,8 +13797,9 @@ def suggest_order_mismatch(
                 p,
                 package_root,
                 include,
-                module_bases=module_bases,
-                user_provided_module_bases=user_provided_module_bases,
+                source_bases=source_bases,
+                user_provided_source_bases=user_provided_source_bases,
+                detected_packages=detected_packages,
             )
             logger.warning("  - %s appears before one of its dependencies", module_name)
         topo_modules = [
@@ -10550,8 +13807,9 @@ def suggest_order_mismatch(
                 p,
                 package_root,
                 file_to_include.get(p),
-                module_bases=module_bases,
-                user_provided_module_bases=user_provided_module_bases,
+                source_bases=source_bases,
+                user_provided_source_bases=user_provided_source_bases,
+                detected_packages=detected_packages,
             )
             for p in topo_paths
         ]
@@ -10795,24 +14053,24 @@ def verify_no_broken_imports(  # noqa: C901, PLR0912
 def _find_package_root_for_file(
     file_path: Path,
     *,
-    module_bases: list[str] | None = None,
+    source_bases: list[str] | None = None,
     _config_dir: Path | None = None,
 ) -> Path | None:
     """Find the package root for a file.
 
     First checks for __init__.py files (definitive package marker).
-    If no __init__.py found and file is under a module_bases directory,
+    If no __init__.py found and file is under a source_bases directory,
     treats everything after the matching base prefix as a package structure.
 
     Args:
         file_path: Path to the Python file
-        module_bases: Optional list of module base directories (absolute paths)
+        source_bases: Optional list of module base directories (absolute paths)
         _config_dir: Optional config directory (unused, kept for compatibility)
 
     Returns:
         Path to the package root directory, or None if not found
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
     file_path_resolved = file_path.resolve()
     current_dir = file_path_resolved.parent
     last_package_dir: Path | None = None
@@ -10846,7 +14104,7 @@ def _find_package_root_for_file(
             )
             return last_package_dir
             # No __init__.py found yet, continue walking up
-            # (we'll check module_bases after this loop if needed)
+            # (we'll check source_bases after this loop if needed)
 
         # Move up one level
         parent = current_dir.parent
@@ -10858,13 +14116,13 @@ def _find_package_root_for_file(
                     last_package_dir,
                 )
                 return last_package_dir
-            # No __init__.py found, break to check module_bases
+            # No __init__.py found, break to check source_bases
             break
         current_dir = parent
 
-    # If no __init__.py found, check if file is under any module_bases directory
-    if module_bases and last_package_dir is None:
-        for base_str in module_bases:
+    # If no __init__.py found, check if file is under any source_bases directory
+    if source_bases and last_package_dir is None:
+        for base_str in source_bases:
             # base_str is already an absolute path
             base_path = Path(base_str).resolve()
             try:
@@ -10879,7 +14137,7 @@ def _find_package_root_for_file(
                 package_dir = base_path / rel_path.parts[0]
                 if package_dir.exists() and package_dir.is_dir():
                     logger.trace(
-                        "[PKG_ROOT] Found package via module_bases: %s (base: %s)",
+                        "[PKG_ROOT] Found package via source_bases: %s (base: %s)",
                         package_dir,
                         base_path,
                     )
@@ -10892,16 +14150,16 @@ def _find_package_root_for_file(
     return last_package_dir
 
 
-def detect_packages_from_files(
+def detect_packages_from_files(  # noqa: PLR0912, C901, PLR0915
     file_paths: list[Path],
     package_name: str,
     *,
-    module_bases: list[str] | None = None,
+    source_bases: list[str] | None = None,
     _config_dir: Path | None = None,
 ) -> tuple[set[str], list[str]]:
     """Detect packages from file paths.
 
-    If files are under module_bases directories, treats everything after the
+    If files are under source_bases directories, treats everything after the
     matching base prefix as a package structure (regardless of __init__.py).
     Otherwise, follows Python's import rules: only detects regular packages
     (with __init__.py files). Falls back to configured package_name if none detected.
@@ -10909,7 +14167,7 @@ def detect_packages_from_files(
     Args:
         file_paths: List of file paths to check
         package_name: Configured package name (used as fallback)
-        module_bases: Optional list of module base directories (absolute paths)
+        source_bases: Optional list of module base directories (absolute paths)
         _config_dir: Optional config directory (unused, kept for compatibility)
 
     Returns:
@@ -10917,14 +14175,14 @@ def detect_packages_from_files(
         Package names always includes package_name. Parent directories are
         returned as absolute paths, deduplicated.
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
     detected: set[str] = set()
     parent_dirs: list[Path] = []
     seen_parents: set[Path] = set()
 
     # Detect packages from files
     for file_path in file_paths:
-        pkg_root = _find_package_root_for_file(file_path, module_bases=module_bases)
+        pkg_root = _find_package_root_for_file(file_path, source_bases=source_bases)
         if pkg_root:
             # Extract package name from directory name
             pkg_name = pkg_root.name
@@ -10945,6 +14203,80 @@ def detect_packages_from_files(
                 pkg_root,
                 parent_dir,
             )
+
+    # Also detect directories in source_bases as packages if they contain
+    # subdirectories that are packages (namespace packages)
+    # This must happen BEFORE adding package_name to detected, so we can check
+    # if base_name == package_name correctly
+    # Compute common root of all files to avoid detecting it as a package
+    common_root: Path | None = None
+    if file_paths:
+        common_root = file_paths[0].parent
+        for file_path in file_paths[1:]:
+            # Find common prefix of paths
+            common_parts = [
+                p
+                for p, q in zip(common_root.parts, file_path.parent.parts, strict=False)
+                if p == q
+            ]
+            if common_parts:
+                common_root = Path(*common_parts)
+            else:
+                # No common root, use first file's parent
+                common_root = file_paths[0].parent
+                break
+    if source_bases:
+        for base_str in source_bases:
+            base_path = Path(base_str).resolve()
+            if not base_path.exists() or not base_path.is_dir():
+                continue
+            # Check if this base contains any detected packages as direct children
+            base_name = base_path.name
+            # Skip if base is filesystem root, empty name, already detected,
+            # is package_name, or is the common root of all files
+            if (
+                not base_name
+                or base_name in detected
+                or base_name == package_name
+                or base_path == base_path.parent  # filesystem root
+                or (common_root and base_path == common_root.resolve())
+            ):
+                logger.trace(
+                    "[PKG_DETECT] Skipping base %s: name=%s, in_detected=%s, "
+                    "is_package_name=%s, is_common_root=%s",
+                    base_path,
+                    base_name,
+                    base_name in detected,
+                    base_name == package_name,
+                    common_root and base_path == common_root.resolve(),
+                )
+                continue
+            # Check if any detected package has this base as its parent
+            for file_path in file_paths:
+                pkg_root = _find_package_root_for_file(
+                    file_path, source_bases=source_bases
+                )
+                if pkg_root:
+                    pkg_parent = pkg_root.parent.resolve()
+                    logger.trace(
+                        "[PKG_DETECT] Checking base: %s (base_path=%s), "
+                        "pkg_root=%s, pkg_parent=%s, match=%s",
+                        base_name,
+                        base_path,
+                        pkg_root,
+                        pkg_parent,
+                        pkg_parent == base_path,
+                    )
+                    if pkg_parent == base_path:
+                        # This base contains a detected package, so it's also a package
+                        detected.add(base_name)
+                        logger.trace(
+                            "[PKG_DETECT] Detected base directory as package: %s "
+                            "(contains package: %s)",
+                            base_name,
+                            pkg_root.name,
+                        )
+                        break
 
     # Always include configured package (for fallback and multi-package scenarios)
     detected.add(package_name)
@@ -11010,7 +14342,7 @@ def force_mtime_advance(path: Path, seconds: float = 1.0, max_tries: int = 50) -
     raise AssertionError(xmsg)
 
 
-def _collect_modules(  # noqa: PLR0912, PLR0915
+def _collect_modules(  # noqa: PLR0912, PLR0915, C901
     file_paths: list[Path],
     package_root: Path,
     _package_name: str,
@@ -11020,8 +14352,8 @@ def _collect_modules(  # noqa: PLR0912, PLR0915
     internal_imports: InternalImportMode = "force_strip",
     comments_mode: CommentsMode = "keep",
     docstring_mode: DocstringMode = "keep",
-    module_bases: list[str] | None = None,
-    user_provided_module_bases: list[str] | None = None,
+    source_bases: list[str] | None = None,
+    user_provided_source_bases: list[str] | None = None,
 ) -> tuple[dict[str, str], OrderedDict[str, None], list[str], list[str]]:
     """Collect and process module sources from file paths.
 
@@ -11035,14 +14367,14 @@ def _collect_modules(  # noqa: PLR0912, PLR0915
         internal_imports: How to handle internal imports
         comments_mode: How to handle comments in stitched output
         docstring_mode: How to handle docstrings in stitched output
-        module_bases: Optional list of module base directories for external files
-        user_provided_module_bases: Optional list of user-provided module bases
+        source_bases: Optional list of module base directories for external files
+        user_provided_source_bases: Optional list of user-provided module bases
             (from config, excludes auto-discovered package directories)
 
     Returns:
         Tuple of (module_sources, all_imports, parts, derived_module_names)
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
     all_imports: OrderedDict[str, None] = OrderedDict()
     module_sources: dict[str, str] = {}
     parts: list[str] = []
@@ -11102,37 +14434,74 @@ def _collect_modules(  # noqa: PLR0912, PLR0915
 
         # Derive module name from file path
         include = file_to_include.get(file_path)
+        # Debug: log source_bases for external files
+        if "site-packages" in str(file_path) or "dist-packages" in str(file_path):
+            logger.trace(
+                f"[COLLECT] Deriving module name for external file: {file_path}, "
+                f"source_bases={source_bases}, "
+                f"user_provided_source_bases={user_provided_source_bases}",
+            )
         module_name = derive_module_name(
             file_path,
             package_root,
             include,
-            module_bases=module_bases,
-            user_provided_module_bases=user_provided_module_bases,
+            source_bases=source_bases,
+            user_provided_source_bases=user_provided_source_bases,
+            detected_packages=detected_packages,
         )
 
-        # If package_root is a package directory, preserve package structure
-        if is_package_dir and package_name_from_root:
-            # Handle __init__.py special case: represents the package itself
-            if file_path.name == "__init__.py" and file_path.parent == package_root:
-                # Use package name as the module name (represents the package)
-                module_name = package_name_from_root
-            else:
-                # Prepend package name to preserve structure
-                # e.g., "core" -> "oldpkg.core"
-                module_name = f"{package_name_from_root}.{module_name}"
-        # If package name is provided but package_root.name doesn't match,
-        # still prepend package name to ensure correct module structure
-        # (e.g., files in src/ but package is testpkg -> testpkg.utils)
-        # Only do this if package_root is a common project subdirectory
-        # (like src, lib, app) AND files have imports that reference the package
-        elif (
-            package_root.name != _package_name
-            and not module_name.startswith(f"{_package_name}.")
-            and has_package_imports
-            and module_name != _package_name
-        ):
-            # Prepend package name to module name
-            module_name = f"{_package_name}.{module_name}"
+        # Check if file is from an installed package (site-packages or dist-packages)
+        # AND the module name already starts with a detected package that's not the
+        # main package. In this case, the module name is already correct and should
+        # not have the main package name prepended.
+        # However, if the module name doesn't start with a detected package, we
+        # should still prepend the main package name (e.g., stitching testpkg into
+        # app package should create app.testpkg, not just testpkg).
+        file_path_str = str(file_path)
+        is_installed_package = (
+            "site-packages" in file_path_str or "dist-packages" in file_path_str
+        )
+        is_external_package = False
+        if is_installed_package:
+            # Check if module name already starts with a detected package that's
+            # not the main package (indicates it's already correctly structured)
+            for pkg in sorted(detected_packages):
+                if pkg != _package_name and (
+                    module_name == pkg or module_name.startswith(f"{pkg}.")
+                ):
+                    is_external_package = True
+                    logger.trace(
+                        f"[COLLECT] Skipping package name prepending for installed "
+                        f"package: module={module_name}, detected_pkg={pkg}, "
+                        f"main_pkg={_package_name}",
+                    )
+                    break
+
+        # Only apply package name prepending logic for files from the main package
+        if not is_external_package:
+            # If package_root is a package directory, preserve package structure
+            if is_package_dir and package_name_from_root:
+                # Handle __init__.py special case: represents the package itself
+                if file_path.name == "__init__.py" and file_path.parent == package_root:
+                    # Use package name as the module name (represents the package)
+                    module_name = package_name_from_root
+                else:
+                    # Prepend package name to preserve structure
+                    # e.g., "core" -> "oldpkg.core"
+                    module_name = f"{package_name_from_root}.{module_name}"
+            # If package name is provided but package_root.name doesn't match,
+            # still prepend package name to ensure correct module structure
+            # (e.g., files in src/ but package is testpkg -> testpkg.utils)
+            # Only do this if package_root is a common project subdirectory
+            # (like src, lib, app) AND files have imports that reference the package
+            elif (
+                package_root.name != _package_name
+                and not module_name.startswith(f"{_package_name}.")
+                and has_package_imports
+                and module_name != _package_name
+            ):
+                # Prepend package name to module name
+                module_name = f"{_package_name}.{module_name}"
 
         derived_module_names.append(module_name)
 
@@ -11293,6 +14662,7 @@ def _build_final_script(  # noqa: C901, PLR0912, PLR0913, PLR0915
     selected_main_block: MainBlock | None = None,
     main_function_result: tuple[str, Path, str] | None = None,
     module_sources: dict[str, str] | None = None,
+    source_bases: list[str] | None = None,
 ) -> tuple[str, list[str]]:
     """Build the final stitched script.
 
@@ -11322,11 +14692,13 @@ def _build_final_script(  # noqa: C901, PLR0912, PLR0913, PLR0915
         description: Optional description for header
         authors: Optional authors for header
         repo: Optional repository URL for header
+        source_bases: Optional list of source base directories for module name
+            derivation and package detection
 
     Returns:
         Final script text
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
     logger.debug("Building final script...")
 
     # Separate __future__ imports
@@ -11485,16 +14857,29 @@ def _build_final_script(  # noqa: C901, PLR0912, PLR0913, PLR0915
         # package_name
         all_actions: list[ModuleActionFull] = []
         if module_mode and module_mode not in ("none", "multi"):
+            logger.trace(
+                "[SHIM_GEN] Generating actions: module_mode=%s, "
+                "shim_names_raw=%s, order_names=%s",
+                module_mode,
+                shim_names_raw[:5] if shim_names_raw else None,
+                order_names[:5] if order_names else None,
+            )
             auto_actions = generate_actions_from_mode(
                 module_mode,
                 detected_packages,
                 package_name,
                 module_names=shim_names_raw,
+                source_bases=source_bases,
             )
             # Apply defaults to mode-generated actions (scope: "original" set here)
             normalized_actions = [
                 set_mode_generated_action_defaults(action) for action in auto_actions
             ]
+            logger.trace(
+                "[SHIM_GEN] Generated %d actions: %s",
+                len(normalized_actions),
+                [f"{a.get('source')} -> {a.get('dest')}" for a in normalized_actions],
+            )
             all_actions.extend(normalized_actions)
 
         # Add user-specified module_actions from RootConfigResolved
@@ -11523,6 +14908,11 @@ def _build_final_script(  # noqa: C901, PLR0912, PLR0913, PLR0915
         # Apply scope: "original" actions to original module names (before prepending)
         transformed_names = shim_names_raw
         if original_scope_actions:
+            logger.trace(
+                "[SHIM_GEN] Applying %d original-scope actions to: %s",
+                len(original_scope_actions),
+                shim_names_raw[:5] if shim_names_raw else None,
+            )
             # Build available_modules set for validation
             available_modules_for_validation = set(shim_names_raw)
             # Add all action sources to available_modules since mode-generated
@@ -11982,7 +15372,7 @@ def _build_final_script(  # noqa: C901, PLR0912, PLR0913, PLR0915
 
         # Add detected packages that have modules in the final output
         # This is important when files from outside the config directory are included
-        # and packages are detected via module_bases but not directly referenced
+        # and packages are detected via source_bases but not directly referenced
         # in module names (e.g., when __init__.py is excluded)
         # Only add packages that actually have modules (not deleted by actions)
         all_module_names = set(shim_names) | set(module_names_for_structure)
@@ -12006,8 +15396,10 @@ def _build_final_script(  # noqa: C901, PLR0912, PLR0913, PLR0915
         )
 
         # Sort packages by depth (shallowest first) to create parents before children
-        sorted_packages = sorted(all_packages, key=lambda p: p.count("."))
-        logger.trace("Sorted packages (by depth): %s", sorted_packages)
+        # Use package name as secondary sort key to ensure deterministic ordering
+        # when multiple packages have the same depth
+        sorted_packages = sorted(all_packages, key=lambda p: (p.count("."), p))
+        logger.trace("Sorted packages (by depth, then name): %s", sorted_packages)
 
         # Generate shims for each package
         # Each package gets its own module object to maintain proper isolation
@@ -12479,6 +15871,24 @@ def _build_final_script(  # noqa: C901, PLR0912, PLR0913, PLR0915
         # Note: We already logged this in stitch_modules, so we don't log again here
     # If main_mode == "none", don't add any __main__ block
 
+    # Log commit value being written to script (for CI debugging)
+    logger = getAppLogger()
+    logger.info(
+        "_build_final_script: Writing commit to script: %s (version=%s, build_date=%s)",
+        commit,
+        version,
+        build_date,
+    )
+    logger.trace(
+        "_build_final_script: Writing commit=%s, version=%s, build_date=%s",
+        commit,
+        version,
+        build_date,
+    )
+    if is_ci():
+        logger.info("Writing commit to script: %s", commit)
+        logger.trace("_build_final_script: CI mode: commit=%s", commit)
+
     script_text = (
         "#!/usr/bin/env python3\n"
         '"""\n'
@@ -12579,7 +15989,7 @@ def stitch_modules(  # noqa: PLR0915, PLR0912, PLR0913, C901
                 to overwrite a non-serger file (is_serger_build=False)
         AssertionError: If mtime advancing fails
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
 
     # Bail out early if attempting to overwrite a non-serger file
     # (primary check is in run_build, this is defensive for direct calls)
@@ -12696,24 +16106,24 @@ def stitch_modules(  # noqa: PLR0915, PLR0912, PLR0913, C901
         )
         raise NotImplementedError(msg)
 
-    logger.info("Starting stitch process for package: %s", package_name)
+    logger.debug("Starting stitch process for package: %s", package_name)
 
-    # Extract module_bases from config
+    # Extract source_bases from config
     # (needed for package detection and module derivation)
-    # module_bases is validated and normalized to list[str] in config resolution
+    # source_bases is validated and normalized to list[str] in config resolution
     # It's always present in resolved config, but .get() returns object | None
-    module_bases_raw = config.get("module_bases")
-    user_provided_module_bases_raw = config.get("_user_provided_module_bases")
-    module_bases: list[str] | None = None
-    if module_bases_raw is not None:  # pyright: ignore[reportUnnecessaryComparison]
-        # Type narrowing: module_bases is list[str] after config resolution
-        # Cast is safe because module_bases is validated in config resolution
-        module_bases = [str(mb) for mb in cast("list[str]", module_bases_raw)]  # pyright: ignore[reportUnnecessaryCast]
-    user_provided_module_bases: list[str] | None = None
-    if user_provided_module_bases_raw is not None:  # pyright: ignore[reportUnnecessaryComparison]
-        # Type narrowing: _user_provided_module_bases is list[str] after build
-        user_provided_module_bases = [
-            str(mb) for mb in cast("list[str]", user_provided_module_bases_raw)
+    source_bases_raw = config.get("source_bases")
+    user_provided_source_bases_raw = config.get("_user_provided_source_bases")
+    source_bases: list[str] | None = None
+    if source_bases_raw is not None:  # pyright: ignore[reportUnnecessaryComparison]
+        # Type narrowing: source_bases is list[str] after config resolution
+        # Cast is safe because source_bases is validated in config resolution
+        source_bases = [str(mb) for mb in cast("list[str]", source_bases_raw)]  # pyright: ignore[reportUnnecessaryCast]
+    user_provided_source_bases: list[str] | None = None
+    if user_provided_source_bases_raw is not None:  # pyright: ignore[reportUnnecessaryComparison]
+        # Type narrowing: _user_provided_source_bases is list[str] after build
+        user_provided_source_bases = [
+            str(mb) for mb in cast("list[str]", user_provided_source_bases_raw)
         ]  # pyright: ignore[reportUnnecessaryCast]
 
     # --- Package Detection (once, at the start) ---
@@ -12729,7 +16139,7 @@ def stitch_modules(  # noqa: PLR0915, PLR0912, PLR0913, C901
         detected_packages, _discovered_parent_dirs = detect_packages_from_files(
             order_paths,
             package_name,
-            module_bases=module_bases,
+            source_bases=source_bases,
         )
 
     # --- Validation Phase ---
@@ -12755,8 +16165,8 @@ def stitch_modules(  # noqa: PLR0915, PLR0912, PLR0913, C901
         file_to_include,
         detected_packages=detected_packages,
         topo_paths=topo_paths,
-        module_bases=module_bases,
-        user_provided_module_bases=user_provided_module_bases,
+        source_bases=source_bases,
+        user_provided_source_bases=user_provided_source_bases,
     )
 
     # --- Apply affects: "stitching" actions to filter files ---
@@ -12781,8 +16191,9 @@ def stitch_modules(  # noqa: PLR0915, PLR0912, PLR0913, C901
                 file_path,
                 package_root,
                 include,
-                module_bases=module_bases,
-                user_provided_module_bases=user_provided_module_bases,
+                source_bases=source_bases,
+                user_provided_source_bases=user_provided_source_bases,
+                detected_packages=detected_packages,
             )
 
             # If package_root is a package directory, preserve package structure
@@ -12933,7 +16344,7 @@ def stitch_modules(  # noqa: PLR0915, PLR0912, PLR0913, C901
         raise TypeError(msg)
     docstring_mode = cast("DocstringMode", docstring_mode_raw)
 
-    # module_bases already extracted above (before package detection)
+    # source_bases already extracted above (before package detection)
     module_sources, all_imports, parts, derived_module_names = _collect_modules(
         order_paths,
         package_root,
@@ -12944,8 +16355,8 @@ def stitch_modules(  # noqa: PLR0915, PLR0912, PLR0913, C901
         internal_imports,
         comments_mode,
         docstring_mode,
-        module_bases=module_bases,
-        user_provided_module_bases=user_provided_module_bases,
+        source_bases=source_bases,
+        user_provided_source_bases=user_provided_source_bases,
     )
 
     # --- Parse AST once for all modules ---
@@ -13077,6 +16488,7 @@ def stitch_modules(  # noqa: PLR0915, PLR0912, PLR0913, C901
         selected_main_block=selected_main_block,
         main_function_result=main_function_result,
         module_sources=module_sources,
+        source_bases=source_bases,
     )
 
     # --- Verification ---
@@ -13146,7 +16558,7 @@ def expand_include_pattern(include: IncludeResolved) -> list[Path]:
         List of resolved absolute paths to matching .py files
     """
     validate_required_keys(include, {"path", "root"}, "include")
-    logger = get_app_logger()
+    logger = getAppLogger()
     src_pattern = str(include["path"])
     root = Path(include["root"]).resolve()
     matches: list[Path] = []
@@ -13218,7 +16630,7 @@ def collect_included_files(
         validate_required_keys(inc, {"path", "root"}, "include")
     for exc in excludes:
         validate_required_keys(exc, {"path", "root"}, "exclude")
-    logger = get_app_logger()
+    logger = getAppLogger()
     all_files: set[Path] = set()
     # Track which include produced each file (for dest parameter and exclude checking)
     file_to_include: dict[Path, IncludeResolved] = {}
@@ -13354,7 +16766,7 @@ def _handle_literal_file_path(
     Returns:
         True if handled as literal file, False if should continue pattern matching
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
     candidate = config_root / pattern_str
     if candidate.exists() and candidate.is_dir():
         # Directory without trailing slash - treat as recursive
@@ -13413,7 +16825,7 @@ def resolve_order_paths(
     Raises:
         ValueError: If an order entry resolves to a path not in included files
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
     included_set = set(included_files)
     resolved: list[Path] = []
     explicitly_ordered: set[Path] = set()
@@ -13537,10 +16949,10 @@ def find_package_root(file_paths: list[Path]) -> Path:
 
 
 def _extract_build_metadata(
+    *,
     build_cfg: RootConfigResolved,
     project_root: Path,
     git_root: Path | None = None,
-    *,
     disable_timestamp: bool = False,
 ) -> tuple[str, str, str]:
     """Extract version, commit, and build date for embedding.
@@ -13561,9 +16973,17 @@ def _extract_build_metadata(
     # Note: Version is fully resolved during config resolution, so we just need
     # to check the resolved config and fall back to timestamp if not set
     version = build_cfg.get("version")
-    # Use git_root for commit extraction (package root), fallback to project_root
+    # Use git_root for commit extraction (project root), fallback to project_root
     commit_path = git_root if git_root is not None else project_root
+    logger = getAppLogger()
+    logger.trace(
+        "_extract_build_metadata: project_root=%s, git_root=%s, commit_path=%s",
+        project_root,
+        git_root,
+        commit_path,
+    )
     commit = extract_commit(commit_path)
+    logger.trace("_extract_build_metadata: extracted commit=%s", commit)
 
     if disable_timestamp:
         build_date = BUILD_TIMESTAMP_PLACEHOLDER
@@ -13601,7 +17021,7 @@ def run_build(  # noqa: C901, PLR0915, PLR0912
         },
         "build_cfg",
     )
-    logger = get_app_logger()
+    logger = getAppLogger()
     dry_run = build_cfg.get("dry_run", DEFAULT_DRY_RUN)
     validate_config = build_cfg.get("validate_config", False)
 
@@ -13791,12 +17211,34 @@ def run_build(  # noqa: C901, PLR0915, PLR0912
     # Warn about files outside project directory
     cwd = Path.cwd().resolve()
     config_root_resolved = Path(config_root).resolve()
+    # Get source_bases and installed_bases to check if file is in them
+    source_bases = build_cfg.get("source_bases", [])
+    installed_bases = build_cfg.get("installed_bases", [])
+    # Convert to Path objects for comparison
+    source_base_paths = [Path(base).resolve() for base in source_bases]
+    installed_base_paths = [Path(base).resolve() for base in installed_bases]
     for file_path in final_files:
         file_path_resolved = file_path.resolve()
+        # Check if file is inside source_bases or installed_bases
+        is_in_source_bases = any(
+            file_path_resolved.is_relative_to(base_path)
+            for base_path in source_base_paths
+        )
+        is_in_installed_bases = any(
+            file_path_resolved.is_relative_to(base_path)
+            for base_path in installed_base_paths
+        )
         # Check if file is outside both config_root and CWD
         is_outside_config = not file_path_resolved.is_relative_to(config_root_resolved)
         is_outside_cwd = not file_path_resolved.is_relative_to(cwd)
-        if is_outside_config and is_outside_cwd:
+        # Only warn if outside config/CWD AND not in source_bases or installed_bases
+        should_warn = (
+            is_outside_config
+            and is_outside_cwd
+            and not is_in_source_bases
+            and not is_in_installed_bases
+        )
+        if should_warn:
             logger.warning(
                 "Including file outside project directory: %s "
                 "(config root: %s, CWD: %s)",
@@ -13810,12 +17252,12 @@ def run_build(  # noqa: C901, PLR0915, PLR0912
 
     # Detect packages once from final files (after all exclusions)
     logger.debug("Detecting packages from included files (after exclusions)...")
-    module_bases = build_cfg.get("module_bases", [])
-    # Save user-provided module_bases (from config, before adding discovered ones)
+    source_bases = build_cfg.get("source_bases", [])
+    # Save user-provided source_bases (from config, before adding discovered ones)
     # Filter out package directories (those with __init__.py) as they shouldn't be used
     # for module name derivation (would lose package name)
-    user_provided_module_bases: list[str] = []
-    for base_str in module_bases:
+    user_provided_source_bases: list[str] = []
+    for base_str in source_bases:
         base_path = Path(base_str)
         # Skip if this is a package directory (has __init__.py)
         # Package directories extracted from includes shouldn't be used for derivation
@@ -13825,31 +17267,64 @@ def run_build(  # noqa: C901, PLR0915, PLR0912
                 base_str,
             )
             continue
-        user_provided_module_bases.append(base_str)
+        user_provided_source_bases.append(base_str)
     detected_packages, discovered_parent_dirs = detect_packages_from_files(
-        final_files, package, module_bases=module_bases
+        final_files, package, source_bases=source_bases
     )
 
-    # Add discovered package parent directories to module_bases (lowest priority)
+    # Add discovered package parent directories to source_bases (lowest priority)
     if discovered_parent_dirs:
         # Deduplicate while preserving order (add at end)
-        seen_bases = set(module_bases)
+        seen_bases = set(source_bases)
         for parent_dir in discovered_parent_dirs:
             if parent_dir not in seen_bases:
                 seen_bases.add(parent_dir)
-                module_bases.append(parent_dir)
+                source_bases.append(parent_dir)
                 logger.debug(
                     "[MODULE_BASES] Added discovered package parent directory: %s",
                     parent_dir,
                 )
-        # Update build_cfg with extended module_bases
-        build_cfg["module_bases"] = module_bases
-    # Store user-provided module_bases (filtered) for use in derive_module_name
+                # Also add to user_provided_source_bases if it's not a package directory
+                # (discovered parent directories are typically not package directories)
+                parent_path = Path(parent_dir)
+                if (
+                    not (parent_path / "__init__.py").exists()
+                    and parent_dir not in user_provided_source_bases
+                ):
+                    user_provided_source_bases.append(parent_dir)
+                    logger.trace(
+                        "[MODULE_BASES] Added discovered parent directory to "
+                        "user_provided_source_bases: %s",
+                        parent_dir,
+                    )
+        # Update build_cfg with extended source_bases
+        build_cfg["source_bases"] = source_bases
+
+    # Now detect base directories in source_bases as packages if they contain
+    # detected packages (must happen after source_bases is fully populated)
+    # This handles cases where a directory in source_bases contains packages
+    # but doesn't have __init__.py itself (namespace packages)
+    # Re-detect packages now that source_bases is fully populated
+    # This will pick up base directories that are now in source_bases
+    detected_packages_updated, _ = detect_packages_from_files(
+        final_files, package, source_bases=source_bases
+    )
+    # Merge any newly detected packages
+    if detected_packages_updated != detected_packages:
+        newly_detected = detected_packages_updated - detected_packages
+        if newly_detected:
+            detected_packages = detected_packages_updated
+            logger.debug(
+                "[MODULE_BASES] Detected additional packages after adding "
+                "discovered bases: %s",
+                sorted(newly_detected),
+            )
+    # Store user-provided source_bases (filtered) for use in derive_module_name
     # This excludes package directories extracted from includes
     # Use dict update to avoid TypedDict type error for internal field
     build_cfg_dict: dict[str, object] = build_cfg  # type: ignore[assignment]
-    build_cfg_dict["_user_provided_module_bases"] = (
-        user_provided_module_bases if user_provided_module_bases else []
+    build_cfg_dict["_user_provided_source_bases"] = (
+        user_provided_source_bases if user_provided_source_bases else []
     )
 
     # Resolve order paths (order is list[str] of paths, or None for auto-discovery)
@@ -13873,8 +17348,8 @@ def run_build(  # noqa: C901, PLR0915, PLR0912
             package,
             file_to_include,
             detected_packages=detected_packages,
-            module_bases=module_bases,
-            user_provided_module_bases=user_provided_module_bases,
+            source_bases=source_bases,
+            user_provided_source_bases=user_provided_source_bases,
         )
         logger.debug("Auto-discovered order (%d modules)", len(order_paths))
         # When auto-discovered, order_paths IS the topological order, so we can reuse it
@@ -13912,21 +17387,23 @@ def run_build(  # noqa: C901, PLR0915, PLR0912
         "main_mode": build_cfg.get("main_mode", "auto"),
         "main_name": build_cfg.get("main_name"),
         "detected_packages": detected_packages,  # Pre-detected packages
-        "module_bases": module_bases,  # For package detection fallback
-        "_user_provided_module_bases": build_cfg.get(
-            "_user_provided_module_bases", []
+        "source_bases": source_bases,  # For package detection fallback
+        "_user_provided_source_bases": build_cfg.get(
+            "_user_provided_source_bases", []
         ),  # User-provided (filtered) for derive_module_name
         "__meta__": build_cfg["__meta__"],  # For config_dir access in fallback
     }
 
     # Extract metadata for embedding
-    # Use config_root for finding pyproject.toml (project root), package_root for git
+    # Use config_root for finding pyproject.toml (project root) and for git
     config_root = build_cfg["__meta__"]["config_root"]
+    # Resolve to absolute path for git operations
+    git_root = config_root.resolve()
     disable_timestamp = build_cfg.get("disable_build_timestamp", False)
     version, commit, build_date = _extract_build_metadata(
-        build_cfg,
-        config_root,
-        package_root,
+        build_cfg=build_cfg,
+        project_root=config_root,
+        git_root=git_root,  # Use resolved project root for git operations
         disable_timestamp=disable_timestamp,
     )
 
@@ -13976,7 +17453,7 @@ def run_build(  # noqa: C901, PLR0915, PLR0912
             post_processing=post_processing,
             is_serger_build=is_serger_build_result,
         )
-        logger.info("✅ Stitch completed → %s\n", out_display)
+        logger.minimal("✅ Stitch completed → %s\n", out_display)
     except RuntimeError as e:
         xmsg = f"Stitch build failed: {e}"
         raise RuntimeError(xmsg) from e
@@ -14016,7 +17493,7 @@ def watch_for_changes(
     - Polling interval defaults to 1 second (tune 0.5–2.0 for balance).
     Stops on KeyboardInterrupt.
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
     logger.info(
         "👀 Watching for changes (interval=%.2fs)... Press Ctrl+C to stop.", interval
     )
@@ -14077,7 +17554,7 @@ def _get_metadata_from_header(script_path: Path) -> tuple[str, str]:
     Prefers in-file constants (__version__, __commit__) if present;
     falls back to commented header tags.
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
     version = "unknown"
     commit = "unknown"
 
@@ -14112,7 +17589,7 @@ def get_metadata() -> Metadata:
     - Source installed → read pyproject.toml + git
     """
     script_path = Path(__file__)
-    logger = get_app_logger()
+    logger = getAppLogger()
     logger.trace("get_metadata ran from:", Path(__file__).resolve())
 
     # --- Heuristic: standalone script lives outside `src/` ---
@@ -14172,7 +17649,7 @@ def _create_test_package(pkg_dir: Path) -> None:
         PermissionError: If unable to write files (environment issue)
         OSError: If directory operations fail (environment issue)
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
     logger.trace("[SELFTEST] _create_test_package: pkg_dir=%s", pkg_dir)
 
     # base.py - simple module with a constant
@@ -14231,7 +17708,7 @@ def _create_build_config(
     Raises:
         RuntimeError: If config construction fails (program bug)
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
     logger.trace(
         "[SELFTEST] _create_build_config: test_pkg_dir=%s, out_file=%s, tmp_dir=%s",
         test_pkg_dir,
@@ -14308,7 +17785,7 @@ def _execute_selftest_build(build_cfg: RootConfigResolved) -> None:
     """
     # run_build will validate required keys, but we need package for this function
     validate_required_keys(build_cfg, {"package"}, "build_cfg")
-    logger = get_app_logger()
+    logger = getAppLogger()
     logger.trace(
         "[SELFTEST] _execute_selftest_build: package=%s", build_cfg.get("package")
     )
@@ -14355,7 +17832,7 @@ def _verify_compiles(stitched_file: Path) -> None:
     Raises:
         RuntimeError: If compilation fails (program bug - stitched output invalid)
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
     file_size = stitched_file.stat().st_size
     logger.trace(
         "[SELFTEST] _verify_compiles: file=%s, size=%d bytes",
@@ -14386,7 +17863,7 @@ def _verify_executes(stitched_file: Path) -> None:
         RuntimeError: If execution fails or produces unexpected output (program bug)
         AssertionError: If output validation fails (program bug)
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
     logger.trace("[SELFTEST] _verify_executes: file=%s", stitched_file)
 
     python_cmd = ["python3", str(stitched_file)]
@@ -14473,7 +17950,7 @@ def _verify_content(stitched_file: Path) -> None:
     Raises:
         AssertionError: If expected markers are not found (program bug)
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
     logger.trace("[SELFTEST] _verify_content: file=%s", stitched_file)
 
     content = stitched_file.read_text(encoding="utf-8")
@@ -14518,10 +17995,10 @@ def run_selftest() -> bool:  # noqa: PLR0915
     Returns:
         True if selftest passes, False otherwise
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
 
     # Always run selftest with at least DEBUG level, then revert
-    with logger.use_level("DEBUG", minimum=True):
+    with logger.useLevel("DEBUG", minimum=True):
         logger.info("🧪 Running self-test...")
 
         # Log environment info for GitHub issue reporting
@@ -14641,7 +18118,7 @@ def run_selftest() -> bool:  # noqa: PLR0915
                     "Self-test failed due to environment issue (this is likely "
                     "a problem with your system setup, not with %s): %s"
                 )
-            logger.error_if_not_debug(msg_template, PROGRAM_DISPLAY, e)
+            logger.errorIfNotDebug(msg_template, PROGRAM_DISPLAY, e)
             logger.debug(
                 "[SELFTEST] Environment issue details: error=%s, tmp_dir=%s",
                 e,
@@ -14652,7 +18129,7 @@ def run_selftest() -> bool:  # noqa: PLR0915
         except RuntimeError as e:
             # Program bugs: build failures, compilation errors, execution errors
             stitched_file_info = str(stitched_file) if stitched_file else "N/A"
-            logger.error_if_not_debug(
+            logger.errorIfNotDebug(
                 "Self-test failed (this appears to be a bug in %s): %s",
                 PROGRAM_DISPLAY,
                 e,
@@ -14669,7 +18146,7 @@ def run_selftest() -> bool:  # noqa: PLR0915
         except AssertionError as e:
             # Program bugs: validation failures, content mismatches
             stitched_file_info = str(stitched_file) if stitched_file else "N/A"
-            logger.error_if_not_debug(
+            logger.errorIfNotDebug(
                 "Self-test failed validation (this appears to be a bug in %s): %s",
                 PROGRAM_DISPLAY,
                 e,
@@ -14906,7 +18383,7 @@ def _normalize_positional_args(
     parser: argparse.ArgumentParser,
 ) -> None:
     """Normalize positional arguments into explicit include/out flags."""
-    logger = get_app_logger()
+    logger = getAppLogger()
     includes: list[str] = getattr(args, "positional_include", [])
     out_pos: str | None = getattr(args, "positional_out", None)
 
@@ -14959,13 +18436,11 @@ class _LoadedConfig:
 
 def _initialize_logger(args: argparse.Namespace) -> None:
     """Initialize logger with CLI args, env vars, and defaults."""
-    logger = get_app_logger()
-    log_level = logger.determine_log_level(args=args)
+    logger = getAppLogger()
+    log_level = logger.determineLogLevel(args=args)
     logger.setLevel(log_level)
-    logger.enable_color = getattr(
-        args, "enable_color", logger.determine_color_enabled()
-    )
-    logger.trace("[BOOT] log-level initialized: %s", logger.level_name)
+    logger.enable_color = getattr(args, "enable_color", logger.determineColorEnabled())
+    logger.trace("[BOOT] log-level initialized: %s", logger.levelName)
 
     logger.debug(
         "Runtime: Python %s (%s)\n    %s",
@@ -14986,7 +18461,7 @@ def _validate_includes(
     Returns True if validation passes, False if we should abort.
     Logs appropriate warnings/errors.
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
 
     # The presence of "include" key (even if empty) signals intentional choice:
     #   {"include": []}                    → include:[] in config → no check
@@ -15043,7 +18518,7 @@ def _validate_package(  # noqa: PLR0912
 
     This is the detailed validation that provides helpful error messages with
     context:
-    - Lists available modules/packages found in module_bases
+    - Lists available modules/packages found in source_bases
     - Explains why auto-detection failed (multiple modules, no modules, etc.)
     - Suggests solutions based on the specific situation
     - Respects strict_config to determine error vs warning
@@ -15058,7 +18533,7 @@ def _validate_package(  # noqa: PLR0912
     Returns True if validation passes, False if we should abort.
     Logs appropriate warnings/errors.
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
 
     # Package is only required for stitch builds (which need includes)
     # If there are no includes (config or CLI), skip package validation
@@ -15093,7 +18568,7 @@ def _validate_package(  # noqa: PLR0912
 
     if not has_explicit_package_key and config_missing_package:
         # Collect context for better error messages
-        module_bases = resolved.get("module_bases", [])
+        source_bases = resolved.get("source_bases", [])
         config_dir: Path | None = None
         meta = resolved.get("__meta__")
         if meta and isinstance(meta, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
@@ -15101,10 +18576,10 @@ def _validate_package(  # noqa: PLR0912
             if isinstance(config_dir_raw, Path):  # pyright: ignore[reportUnnecessaryIsInstance]
                 config_dir = config_dir_raw
 
-        # Get all modules found in module_bases for helpful error messages
+        # Get all modules found in source_bases for helpful error messages
         all_modules: list[str] = []
-        if module_bases and config_dir:
-            all_modules = _get_first_level_modules_from_bases(module_bases, config_dir)
+        if source_bases and config_dir:
+            all_modules = _get_first_level_modules_from_bases(source_bases, config_dir)
             # Remove duplicates while preserving order
             seen: set[str] = set()
             unique_modules: list[str] = []
@@ -15115,17 +18590,17 @@ def _validate_package(  # noqa: PLR0912
             all_modules = unique_modules
 
         # Build helpful error message based on what was found
-        if not module_bases:
+        if not source_bases:
             msg = (
                 "No package name found.\n"
-                "   Use 'package' in your config, or set 'module_bases' to enable "
+                "   Use 'package' in your config, or set 'source_bases' to enable "
                 "auto-detection."
             )
         elif len(all_modules) == 0:
             msg = (
-                "No package name found. No modules found in module_bases: "
-                f"{module_bases}.\n"
-                "   Use 'package' in your config, or ensure module_bases contain "
+                "No package name found. No modules found in source_bases: "
+                f"{source_bases}.\n"
+                "   Use 'package' in your config, or ensure source_bases contain "
                 "Python modules/packages."
             )
         elif len(all_modules) == 1:
@@ -15133,7 +18608,7 @@ def _validate_package(  # noqa: PLR0912
             # helpful message
             msg = (
                 f"No package name found. Found single module '{all_modules[0]}' "
-                f"in module_bases: {module_bases}.\n"
+                f"in source_bases: {source_bases}.\n"
                 "   This should have been auto-detected. Please specify 'package' "
                 "explicitly or report this as a bug."
             )
@@ -15141,8 +18616,8 @@ def _validate_package(  # noqa: PLR0912
             # Multiple modules found - explain why auto-detection failed
             modules_str = ", ".join(f"'{m}'" for m in all_modules)
             msg = (
-                f"No package name found. Found multiple modules in module_bases "
-                f"{module_bases}: {modules_str}.\n"
+                f"No package name found. Found multiple modules in source_bases "
+                f"{source_bases}: {modules_str}.\n"
                 "   Please specify 'package' explicitly in your config to "
                 "indicate which module to use."
             )
@@ -15167,7 +18642,7 @@ def _handle_early_exits(args: argparse.Namespace) -> int | None:
 
     Returns exit code if we should exit early, None otherwise.
     """
-    logger = get_app_logger()
+    logger = getAppLogger()
 
     # --- Version flag ---
     if getattr(args, "version", None):
@@ -15195,7 +18670,7 @@ def _load_and_resolve_config(
     parser: argparse.ArgumentParser,
 ) -> _LoadedConfig:
     """Load config, normalize args, and resolve final configuration."""
-    logger = get_app_logger()
+    logger = getAppLogger()
 
     # --- Load configuration ---
     config_path: Path | None = None
@@ -15204,7 +18679,7 @@ def _load_and_resolve_config(
     if config_result is not None:
         config_path, root_cfg, _validation_summary = config_result
 
-    logger.trace("[CONFIG] log-level re-resolved from config: %s", logger.level_name)
+    logger.trace("[CONFIG] log-level re-resolved from config: %s", logger.levelName)
 
     # --- Normalize shorthand arguments ---
     _normalize_positional_args(args, parser)
@@ -15261,7 +18736,7 @@ def _execute_build(
 
 
 def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911, PLR0912
-    logger = get_app_logger()  # init (use env + defaults)
+    logger = getAppLogger()  # init (use env + defaults)
 
     try:
         parser = _setup_parser()
@@ -15296,11 +18771,11 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911, PLR0912
 
         # --- Config summary ---
         if config.config_path:
-            logger.info("🔧 Using config: %s", config.config_path.name)
+            logger.detail("🔧 Using config: %s", config.config_path.name)
         else:
-            logger.info("🔧 Running in CLI-only mode (no config file).")
-        logger.info("📁 Config root: %s", config.config_dir)
-        logger.info("📂 Invoked from: %s", config.cwd)
+            logger.detail("🔧 Running in CLI-only mode (no config file).")
+        logger.detail("📁 Config root: %s", config.config_dir)
+        logger.detail("📂 Invoked from: %s", config.cwd)
 
         # --- Execute build ---
         _execute_build(config.resolved, args, argv)
@@ -15310,22 +18785,91 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911, PLR0912
         silent = getattr(e, "silent", False)
         if not silent:
             try:
-                logger.error_if_not_debug(str(e))
+                logger.errorIfNotDebug(str(e))
             except Exception:  # noqa: BLE001
-                safe_log(f"[FATAL] Logging failed while reporting: {e}")
+                safeLog(f"[FATAL] Logging failed while reporting: {e}")
         return getattr(e, "code", 1)
 
     except Exception as e:  # noqa: BLE001
         # unexpected internal error
         try:
-            logger.critical_if_not_debug("Unexpected internal error: %s", e)
+            logger.criticalIfNotDebug("Unexpected internal error: %s", e)
         except Exception:  # noqa: BLE001
-            safe_log(f"[FATAL] Logging failed while reporting: {e}")
+            safeLog(f"[FATAL] Logging failed while reporting: {e}")
 
         return getattr(e, "code", 1)
 
     else:
         return 0
+
+
+# === serger.__init__ ===
+# src/serger/__init__.py
+
+"""Serger — Stitch your module into a single file.
+
+Full developer API
+==================
+This package re-exports all non-private symbols from its submodules,
+making it suitable for programmatic use, custom integrations, or plugins.
+Anything prefixed with "_" is considered internal and may change.
+
+Highlights:
+    - main()              → CLI entrypoint
+    - run_build()         → Execute a build configuration
+    - resolve_config()    → Merge CLI args with config files
+    - get_metadata()      → Retrieve version / commit info
+"""
+
+
+__all__ = [  # noqa: RUF022
+    # actions
+    "get_metadata",
+    "watch_for_changes",
+    # build
+    "run_build",
+    # cli
+    "main",
+    # config
+    "find_config",
+    "IncludeResolved",
+    "load_and_validate_config",
+    "load_config",
+    "MetaBuildConfigResolved",
+    "OriginType",
+    "parse_config",
+    "PathResolved",
+    "resolve_build_config",
+    "resolve_config",
+    "RootConfig",
+    "RootConfigResolved",
+    "validate_config",
+    # constants
+    "DEFAULT_ENV_DISABLE_BUILD_TIMESTAMP",
+    "DEFAULT_ENV_LOG_LEVEL",
+    "DEFAULT_ENV_RESPECT_GITIGNORE",
+    "DEFAULT_ENV_WATCH_INTERVAL",
+    "DEFAULT_LOG_LEVEL",
+    "DEFAULT_OUT_DIR",
+    "DEFAULT_RESPECT_GITIGNORE",
+    "DEFAULT_STRICT_CONFIG",
+    "DEFAULT_WATCH_INTERVAL",
+    # logs
+    "getAppLogger",
+    # meta
+    "Metadata",
+    "PROGRAM_CONFIG",
+    "PROGRAM_DISPLAY",
+    "PROGRAM_ENV",
+    "PROGRAM_PACKAGE",
+    "PROGRAM_SCRIPT",
+    # selftest
+    "run_selftest",
+    # utils
+    "is_excluded",
+    "make_includeresolved",
+    "make_pathresolved",
+]
 
 
 # --- import shims for single-file runtime ---
@@ -15424,16 +18968,53 @@ def _setup_pkg_modules(  # noqa: C901, PLR0912
                 setattr(_mod, _submodule_name, _target)
 
 
+_create_pkg_module("apathetic_logging")
+_create_pkg_module("apathetic_schema")
+_create_pkg_module("apathetic_utils")
 _create_pkg_module("serger")
-_create_pkg_module("serger.apathetic_schema")
-_create_pkg_module("serger.apathetic_utils")
 _create_pkg_module("serger.config")
-_create_pkg_module("serger.apathetic_logs")
 _create_pkg_module("serger.utils")
 
 _setup_pkg_modules(
+    "apathetic_logging",
+    [
+        "apathetic_logging.__init__",
+        "apathetic_logging.constants",
+        "apathetic_logging.dual_stream_handler",
+        "apathetic_logging.get_logger",
+        "apathetic_logging.logger",
+        "apathetic_logging.logger_namespace",
+        "apathetic_logging.logging_std_camel",
+        "apathetic_logging.logging_utils",
+        "apathetic_logging.namespace",
+        "apathetic_logging.registry",
+        "apathetic_logging.registry_data",
+        "apathetic_logging.safe_logging",
+        "apathetic_logging.tag_formatter",
+    ],
+    None,
+)
+_setup_pkg_modules(
+    "apathetic_schema", ["apathetic_schema.__init__", "apathetic_schema.schema"], None
+)
+_setup_pkg_modules(
+    "apathetic_utils",
+    [
+        "apathetic_utils.__init__",
+        "apathetic_utils.ci",
+        "apathetic_utils.files",
+        "apathetic_utils.matching",
+        "apathetic_utils.paths",
+        "apathetic_utils.system",
+        "apathetic_utils.text",
+        "apathetic_utils.types",
+    ],
+    None,
+)
+_setup_pkg_modules(
     "serger",
     [
+        "serger.__init__",
         "serger.actions",
         "serger.build",
         "serger.cli",
@@ -15448,22 +19029,10 @@ _setup_pkg_modules(
     ],
     None,
 )
-_setup_pkg_modules("serger.apathetic_schema", ["serger.apathetic_schema.schema"], None)
-_setup_pkg_modules(
-    "serger.apathetic_utils",
-    [
-        "serger.apathetic_utils.files",
-        "serger.apathetic_utils.matching",
-        "serger.apathetic_utils.paths",
-        "serger.apathetic_utils.system",
-        "serger.apathetic_utils.text",
-        "serger.apathetic_utils.types",
-    ],
-    None,
-)
 _setup_pkg_modules(
     "serger.config",
     [
+        "serger.config.__init__",
         "serger.config.config_loader",
         "serger.config.config_resolve",
         "serger.config.config_types",
@@ -15471,10 +19040,11 @@ _setup_pkg_modules(
     ],
     None,
 )
-_setup_pkg_modules("serger.apathetic_logs", ["serger.apathetic_logs.logs"], None)
 _setup_pkg_modules(
     "serger.utils",
     [
+        "serger.utils.__init__",
+        "serger.utils.utils_installed_packages",
         "serger.utils.utils_matching",
         "serger.utils.utils_modules",
         "serger.utils.utils_paths",

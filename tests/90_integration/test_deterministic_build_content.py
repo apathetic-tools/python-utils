@@ -52,7 +52,7 @@ def test_serger_build_with_sample_code_is_deterministic(
     }
     config.write_text(json.dumps(config_data, indent=2))
 
-    serger_script = PROJ_ROOT / "dev" / "serger.py"
+    serger_script = PROJ_ROOT / "bin" / "serger.py"
     monkeypatch.chdir(tmp_path)
 
     # Use temp directories for builds
@@ -255,7 +255,7 @@ def test_serger_build_is_deterministic() -> None:
     3. Verifies both builds produce identical output (with disable_build_timestamp)
     """
     # --- setup ---
-    serger_script = PROJ_ROOT / "dev" / "serger.py"
+    serger_script = PROJ_ROOT / "bin" / "serger.py"
     config_file = PROJ_ROOT / ".serger.jsonc"
 
     # Use temp directories for builds

@@ -13,8 +13,11 @@
 
   // Source modules to include in the stitch
   // These are glob patterns relative to the source directory
+  // Note: apathetic_logging is included from site-packages as it's a dependency
+  // that needs to be stitched together with apathetic_utils
   "include": [
-    "src/apathetic_*/**/*.py"       
+    "src/apathetic_*/**/*.py",
+    "apathetic_logging/**/*.py"
   ],
 
   // Files to exclude from stitching
@@ -22,7 +25,6 @@
   "exclude": [
     "__pycache__/**",
     "*.pyc",
-    "**/__init__.py",    // Exclude __init__.py to avoid name collisions with module-level exports
     "**/__main__.py"     // Entry point, not stitched
   ],
 

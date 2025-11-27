@@ -98,7 +98,7 @@ fix = ["sync:ai:guidance", "fix:ruff:installed", "fix:format:installed"]
 
 # 🧩 Build and license
 "sync:ai:guidance" = "python dev/sync_ai_guidance.py --quiet"
-"build:script" = "python dev/serger.py"
+"build:script" = "python bin/serger.py"
 "build:zipapp" = "shiv -c apathetic_utils -o dist/apathetic_utils.pyz ."
 
 # 🚀 Release management (semantic-release)
@@ -165,6 +165,7 @@ dev = [
 line-length = 88
 fix = true
 respect-gitignore = true
+exclude = ["bin"]
 
 [tool.ruff.lint]
 allowed-confusables = [
@@ -284,6 +285,7 @@ atomic = true                    # Fail instead of partial reordering if conflic
 [tool.mypy]
 python_version = "3.10"
 strict = true
+exclude = ["bin"]
 
 
 
@@ -292,6 +294,7 @@ strict = true
 [tool.pyright]
 pythonVersion = "3.10"
 typeCheckingMode = "strict"
+exclude = ["bin"]
 
 # --- Coverage: code coverage tracking ---
 [tool.coverage.run]

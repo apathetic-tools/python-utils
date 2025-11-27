@@ -38,7 +38,7 @@ def test_serger_build_import_semantics() -> None:
     """
     # --- setup ---
     # Build the project's single-file script
-    serger_script = PROJ_ROOT / "dev" / "serger.py"
+    serger_script = PROJ_ROOT / "bin" / "serger.py"
     config_file = PROJ_ROOT / ".serger.jsonc"
     output_file = PROJ_ROOT / "dist" / "apathetic_utils.py"
 
