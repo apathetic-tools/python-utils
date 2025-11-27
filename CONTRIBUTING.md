@@ -1,6 +1,6 @@
 # 🧩 Contributing Guide
 
-Thanks for your interest in contributing to **Apathetic Python Utils** — a minimal wrapper for the Python standard library logger.
+Thanks for your interest in contributing to **Apathetic Python Utils** — a collection of utility functions for Apathetic Tools projects.
 
 📚 **[Full Contributing Guide →](https://apathetic-tools.github.io/python-utils/contributing)**
 

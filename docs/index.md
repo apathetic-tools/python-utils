@@ -9,36 +9,45 @@ permalink: /
 **Grab bag of helpers for Apathetic projects.**  
 *When stdlib isn't enough.*
 
-*Apathetic Python Utils* provides a lightweight, dependency-free logging solution designed for CLI tools. It extends Python's standard library `logging` module with colorized output, dual-stream handling (stdout/stderr), extra logging levels, and seamless integration with Apathetic Tools projects.
+*Apathetic Python Utils* provides a lightweight, dependency-free collection of utility functions designed for CLI tools. It includes helpers for file loading, path manipulation, system detection, text processing, type checking, pattern matching, and more.
 
 ## Features
-- 🪶 **Zero dependencies** — Uses only Python's standard library
-- 🔄 **Drop-in replacement** — Can be used as a drop-in replacement for stdlib `logging`
-- 🐍 **stdlib-compatible** — Uses camelCase naming to match Python's standard library `logging` module
-- 🔄 **Dual-stream handling** — Smart routing to stdout/stderr
-- 📊 **Extra logging levels** — TEST, TRACE, DETAIL, MINIMAL, and SILENT levels for fine-grained control
-- 🏷️ **Tag-based formatting** — Clean, readable log tags with emoji support
-- 🎨 **Colorized output** — Automatic color detection with TTY support
-- 🔧 **CLI-friendly** — Designed with command-line applications in mind
+- 🪶 **Zero dependencies** — Uses only Python's standard library (except apathetic-logging for logging)
+- 📁 **File loading** — Load TOML and JSONC files with comment support
+- 🛤️ **Path utilities** — Cross-platform path normalization and glob handling
+- 🔍 **Pattern matching** — Portable glob pattern matching with recursive `**` support
+- 🧪 **System detection** — Detect CI environments, pytest execution, and runtime modes
+- 📝 **Text processing** — Pluralization and error message cleanup utilities
+- 🔧 **Type utilities** — Safe isinstance checks for TypedDicts and generics
+- 🎯 **CLI-friendly** — Designed with command-line applications in mind
 - 🧩 **Apathetic Tools integration** — Works seamlessly with serger and other Apathetic Tools
 
 
 ## Quick Example
 
 ```python
-from apathetic_utils import getLogger, registerLogger
+from apathetic_utils import load_jsonc, load_toml, is_ci, detect_runtime_mode, capture_output
+from pathlib import Path
 
-# Register your logger
-registerLogger("my_app")
+# Load configuration files
+config = load_jsonc(Path("config.jsonc"))
+pyproject = load_toml(Path("pyproject.toml"))
 
-# Get the logger instance
-logger = getLogger()
+# Detect environment
+if is_ci():
+    print("Running in CI")
 
-# Use it!
-logger.info("Hello, world!")
-logger.detail("Extra verbosity above INFO")
-logger.minimal("Lower verbosity than INFO")
-logger.trace("Trace information")
+# Detect runtime mode (installed, standalone, zipapp, frozen)
+mode = detect_runtime_mode("my_package")
+print(f"Running in {mode} mode")
+
+# Capture output from CLI commands
+with capture_output() as cap:
+    # Run some command that prints to stdout/stderr
+    print("Hello, world!")
+    print("Error message", file=sys.stderr)
+
+print(f"Captured: {cap.merged.getvalue()}")
 ```
 
 ## Requirements
@@ -53,10 +62,10 @@ Install via **poetry** or **pip**:
 
 ```bash
 # Using poetry
-poetry add apathetic-logger
+poetry add apathetic-utils
 
 # Using pip
-pip install apathetic-logger
+pip install apathetic-utils
 ```
 
 For alternative installation methods, see the [Installation Guide]({{ '/installation' | relative_url }}).
@@ -67,12 +76,11 @@ For alternative installation methods, see the [Installation Guide]({{ '/installa
 - **[Quick Start]({{ '/quickstart' | relative_url }})** — Get up and running in minutes
 - **[API Reference]({{ '/api' | relative_url }})** — Complete API documentation
 - **[Examples]({{ '/examples' | relative_url }})** — Advanced usage examples
-- **[Custom Logger Guide]({{ '/custom-logger' | relative_url }})** — Creating application-specific loggers
 - **[Contributing]({{ '/contributing' | relative_url }})** — How to contribute
 
 ## License
 
-[MIT-a-NOAI License](https://github.com/apathetic-tools/python-logs/blob/main/LICENSE)
+[MIT-a-NOAI License](https://github.com/apathetic-tools/python-utils/blob/main/LICENSE)
 
 You're free to use, copy, and modify the library under the standard MIT terms.  
 The additional rider simply requests that this project not be used to train or fine-tune AI/ML systems until the author deems fair compensation frameworks exist.  
@@ -80,8 +88,8 @@ Normal use, packaging, and redistribution for human developers are unaffected.
 
 ## Resources
 
-- 📘 [Roadmap](https://github.com/apathetic-tools/python-logs/blob/main/ROADMAP.md)
-- 📝 [Release Notes](https://github.com/apathetic-tools/python-logs/releases)
-- 🐛 [Issue Tracker](https://github.com/apathetic-tools/python-logs/issues)
+- 📘 [Roadmap](https://github.com/apathetic-tools/python-utils/blob/main/ROADMAP.md)
+- 📝 [Release Notes](https://github.com/apathetic-tools/python-utils/releases)
+- 🐛 [Issue Tracker](https://github.com/apathetic-tools/python-utils/issues)
 - 💬 [Discord](https://discord.gg/PW6GahZ7)
 

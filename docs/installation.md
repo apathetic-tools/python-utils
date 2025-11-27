@@ -15,13 +15,13 @@ The recommended way to install Apathetic Python Utils is via PyPI. We prefer `po
 ### Using Poetry (Preferred)
 
 ```bash
-poetry add apathetic-logger
+poetry add apathetic-utils
 ```
 
 ### Using pip
 
 ```bash
-pip install apathetic-logger
+pip install apathetic-utils
 ```
 
 This installation method provides:
@@ -31,11 +31,11 @@ This installation method provides:
 
 ## Alternative: Single-File Distribution
 
-For projects that prefer a single-file dependency, we also distribute a standalone `apathetic_utils.py` file that you can download directly from [releases](https://github.com/apathetic-tools/python-logs/releases).
+For projects that prefer a single-file dependency, we also distribute a standalone `apathetic_utils.py` file that you can download directly from [releases](https://github.com/apathetic-tools/python-utils/releases).
 
 ### Download and Use
 
-1. Download `apathetic_utils.py` from the [latest release](https://github.com/apathetic-tools/python-logs/releases)
+1. Download `apathetic_utils.py` from the [latest release](https://github.com/apathetic-tools/python-utils/releases)
 2. Place it in your project directory
 3. Import it directly:
 
@@ -60,14 +60,17 @@ Apathetic Python Utils has **zero runtime dependencies** — it uses only Python
 After installation, verify that it works:
 
 ```python
-from apathetic_utils import getLogger, registerLogger
+from apathetic_utils import is_ci, load_jsonc
+from pathlib import Path
 
-registerLogger("test")
-logger = getLogger()
-logger.minimal("Installation successful!")
+# Test CI detection
+print(f"Running in CI: {is_ci()}")
+
+# Test file loading (if you have a test file)
+# config = load_jsonc(Path("test.jsonc"))
 ```
 
-If you see the info message, installation was successful!
+If the import succeeds, installation was successful!
 
 ## Next Steps
 

@@ -1,34 +1,47 @@
 # Apathetic Python Utils ⚙️
 
-[![CI](https://github.com/apathetic-tools/python-logs/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/goldilocks/python-logs/actions/workflows/ci.yml)
+[![CI](https://github.com/apathetic-tools/python-utils/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/apathetic-tools/python-utils/actions/workflows/ci.yml)
 [![License: MIT-a-NOAI](https://img.shields.io/badge/License-MIT--a--NOAI-blueviolet.svg)](LICENSE)
 [![Discord](https://img.shields.io/badge/Discord-%235865F2.svg?logo=discord&logoColor=white)](https://discord.gg/PW6GahZ7)
 
-📘 **[Roadmap](./ROADMAP.md)** · 📝 **[Release Notes](https://github.com/apathetic-tools/python-logs/releases)**
+📘 **[Roadmap](./ROADMAP.md)** · 📝 **[Release Notes](https://github.com/apathetic-tools/python-utils/releases)**
 
 **Grab bag of helpers for Apathetic projects.**  
 *When stdlib isn't enough.*
 
-*Apathetic Python Utils*
+*Apathetic Python Utils* provides a lightweight, dependency-free collection of utility functions designed for CLI tools. It includes helpers for file loading, path manipulation, system detection, text processing, type checking, pattern matching, and more.
 
-> [!CAUTION]
-> Heads up: the AI cooked dinner. It’s edible, but watch your step.  
+> [!NOTE]
+> Heads up: the AI cooked dinner. It's edible, but watch your step.  
 > Detailed bug reports welcome.
 
 ## Quick Start
 
 ```python
+from apathetic_utils import load_jsonc, load_toml, is_ci, detect_runtime_mode
+from pathlib import Path
 
+# Load configuration files
+config = load_jsonc(Path("config.jsonc"))
+pyproject = load_toml(Path("pyproject.toml"))
+
+# Detect environment
+if is_ci():
+    print("Running in CI")
+
+# Detect runtime mode (installed, standalone, zipapp, frozen)
+mode = detect_runtime_mode("my_package")
+print(f"Running in {mode} mode")
 ```
 
 ## Installation
 
 ```bash
 # Using poetry
-poetry add apathetic-logger
+poetry add apathetic-utils
 
 # Using pip
-pip install apathetic-logger
+pip install apathetic-utils
 ```
 
 ## Documentation
@@ -36,6 +49,17 @@ pip install apathetic-logger
 📚 **[Full Documentation →](https://apathetic-tools.github.io/python-utils/)**
 
 For installation guides, API reference, examples, and more, visit our documentation website.
+
+## Features
+
+- 🪶 **Zero dependencies** — Uses only Python's standard library (except apathetic-logging for logging)
+- 📁 **File loading** — Load TOML and JSONC files with comment support
+- 🛤️ **Path utilities** — Cross-platform path normalization and glob handling
+- 🔍 **Pattern matching** — Portable glob pattern matching with recursive `**` support
+- 🧪 **System detection** — Detect CI environments, pytest execution, and runtime modes
+- 📝 **Text processing** — Pluralization and error message cleanup utilities
+- 🔧 **Type utilities** — Safe isinstance checks for TypedDicts and generics
+- 🎯 **CLI-friendly** — Designed with command-line applications in mind
 
 ---
 

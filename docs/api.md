@@ -8,1805 +8,662 @@ permalink: /api/
 
 Complete API documentation for Apathetic Python Utils.
 
-> **Note:** This library uses **camelCase** naming to match Python's standard library `logging` module conventions.
->
-> By default, this library provides improved behavior with enhancements over the standard library. For stdlib-compatible behavior with no breaking changes, enable [Compatibility Mode](#compatibility-mode).
+## Quick Reference
 
-## Quick Reference: `apathetic_utils` Module Functions
+| Category | Functions |
+|----------|-----------|
+| **File Loading** | [`load_jsonc()`](#load_jsonc), [`load_toml()`](#load_toml) |
+| **Path Utilities** | [`normalize_path_string()`](#normalize_path_string), [`has_glob_chars()`](#has_glob_chars), [`get_glob_root()`](#get_glob_root) |
+| **Pattern Matching** | [`fnmatchcase_portable()`](#fnmatchcase_portable), [`is_excluded_raw()`](#is_excluded_raw) |
+| **System Detection** | [`is_ci()`](#is_ci), [`is_running_under_pytest()`](#is_running_under_pytest), [`detect_runtime_mode()`](#detect_runtime_mode), [`capture_output()`](#capture_output), [`get_sys_version_info()`](#get_sys_version_info) |
+| **Text Processing** | [`plural()`](#plural), [`remove_path_in_error_message()`](#remove_path_in_error_message) |
+| **Type Utilities** | [`safe_isinstance()`](#safe_isinstance), [`literal_to_set()`](#literal_to_set), [`cast_hint()`](#cast_hint), [`schema_from_typeddict()`](#schema_from_typeddict) |
+| **Constants** | [`CI_ENV_VARS`](#ci_env_vars) |
 
-### New Functions
+## File Loading
 
-| Function | Summary |
-|-----------|---------|
-| [`getLoggerOfType()`](#getloggeroftype) | Get a logger of the specified type, creating it if necessary |
-| [`registerLogger()`](#registerlogger) | Register a logger for use by `getLogger()` |
-| [`registerCompatibilityMode()`](#registercompatibilitymode) | Register the compatibility mode setting for stdlib drop-in replacement |
-| [`getCompatibilityMode()`](#getcompatibilitymode) | Get the compatibility mode setting |
-| [`registerLogLevelEnvVars()`](#registerloglevelenvvars) | Register environment variable names to check for log level |
-| [`registerDefaultLogLevel()`](#registerdefaultloglevel) | Register the default log level to use when no other source is found |
-| [`registerTargetPythonVersion()`](#registertargetpythonversion) | Register the target Python version for compatibility checking |
-| [`registerPropagate()`](#registerpropagate) | Register the propagate setting for loggers |
-| [`safeLog()`](#safelog) | Emergency logger that never fails |
-| [`safeTrace()`](#safetrace) | Debug tracing function for test development |
-| [`makeSafeTrace()`](#makesafetrace) | Create a test trace function with a custom icon |
-| [`hasLogger()`](#haslogger) | Check if a logger exists in the logging manager's registry |
-| [`removeLogger()`](#removelogger) | Remove a logger from the logging manager's registry |
-| [`getDefaultLoggerName()`](#getdefaultloggername) | Get default logger name with optional inference from caller's frame |
-| [`getLogLevelEnvVars()`](#getloglevelenvvars) | Get the environment variable names to check for log level |
-| [`getDefaultLogLevel()`](#getdefaultloglevel) | Get the default log level |
-| [`getRegisteredLoggerName()`](#getregisteredloggername) | Get the registered logger name |
-| [`getTargetPythonVersion()`](#gettargetpythonversion) | Get the target Python version |
-| [`getDefaultPropagate()`](#getdefaultpropagate) | Get the default propagate setting |
-| [`getLevelNumber()`](#getlevelnumber) | Convert a log level name to its numeric value |
-| [`getLevelNameStr()`](#getlevelnamestr) | Convert a log level to its string name (always returns string) |
-
-### Changed Functions
-
-| Function | Summary |
-|-----------|---------|
-| [`getLogger()`](#getlogger) | Return the registered logger instance (auto-infers name when None) |
-| [`getLevelName()`](#getlevelname) | Get the level name for a numeric level (extended version that always returns string) |
-
-### Unchanged Functions
-
-| Function | Summary |
-|-----------|---------|
-| [`basicConfig()`](#basicconfig) | Configure logging system |
-| [`addLevelName()`](#addlevelname) | Associate a level name with a numeric level |
-| [`getLevelNamesMapping()`](#getlevelnamesmapping) | 3.11+: Get mapping of level names to numeric values |
-| [`getLoggerClass()`](#getloggerclass) | Return the class to be used when instantiating a logger |
-| [`setLoggerClass()`](#setloggerclass) | Set the class to be used when instantiating a logger |
-| [`getLogRecordFactory()`](#getlogrecordfactory) | Return the factory function used to create LogRecords |
-| [`setLogRecordFactory()`](#setlogrecordfactory) | Set the factory function used to create LogRecords |
-| [`shutdown()`](#shutdown) | Perform an orderly shutdown of the logging system |
-| [`disable()`](#disable) | Disable all logging calls of severity 'level' and below |
-| [`captureWarnings()`](#capturewarnings) | Capture warnings issued by the warnings module |
-| [`critical()`](#critical) | Log a message with severity CRITICAL |
-| [`debug()`](#debug) | Log a message with severity DEBUG |
-| [`detail()`](#detail) | Log a message with severity DETAIL |
-| [`error()`](#error) | Log a message with severity ERROR |
-| [`exception()`](#exception) | Log a message with severity ERROR with exception info |
-| [`fatal()`](#fatal) | Log a message with severity CRITICAL |
-| [`info()`](#info) | Log a message with severity INFO |
-| [`log()`](#log) | Log a message with an explicit level |
-| [`minimal()`](#minimal) | Log a message with severity MINIMAL |
-| [`trace()`](#trace) | Log a message with severity TRACE |
-| [`warn()`](#warn) | Log a message with severity WARNING |
-| [`warning()`](#warning) | Log a message with severity WARNING |
-| [`getHandlerByName()`](#gethandlerbyname) | 3.12+: Get a handler with the specified name |
-| [`getHandlerNames()`](#gethandlernames) | 3.12+: Return all known handler names |
-| [`makeLogRecord()`](#makelogrecord) | Create a LogRecord from the given parameters |
-| [`currentframe()`](#currentframe) | Return the frame object for the caller's stack frame |
-
-## Quick Reference: `apathetic_utils.Logger` Class Methods
-
-### New Methods
-
-| Method | Summary |
-|--------|---------|
-| [`determineLogLevel()`](#determineloglevel) | Resolve log level from CLI → env → root config → default |
-| [`determineColorEnabled()`](#determinecolorenabled) | Return True if colored output should be enabled (classmethod) |
-| [`extendLoggingModule()`](#extendloggingmodule) | Extend Python's logging module with TRACE and SILENT levels (classmethod) |
-| [`trace()`](#trace) | Log a message at TRACE level |
-| [`detail()`](#detail) | Log a message at DETAIL level |
-| [`minimal()`](#minimal) | Log a message at MINIMAL level |
-| [`test()`](#test) | Log a message at TEST level |
-| [`errorIfNotDebug()`](#errorifnotdebug) | Log an error with full traceback only if debug/trace is enabled |
-| [`criticalIfNotDebug()`](#criticalifnotdebug) | Log a critical error with full traceback only if debug/trace is enabled |
-| [`colorize()`](#colorize) | Apply ANSI color codes to text |
-| [`logDynamic()`](#logdynamic) | Log a message at a dynamically specified level |
-| [`useLevel()`](#uselevel) | Context manager to temporarily change log level |
-| [`levelName`](#levelname) | Return the explicit level name set on this logger (property) |
-| [`effectiveLevel`](#effectivelevel) | Return the effective level (what's actually used) (property) |
-| [`effectiveLevelName`](#effectivelevelname) | Return the effective level name (what's actually used) (property) |
-| [`getLevel()`](#getlevel) | Return the explicit level set on this logger |
-| [`getLevelName()`](#getlevelname) | Return the explicit level name set on this logger |
-| [`getEffectiveLevelName()`](#geteffectivelevelname) | Return the effective level name (what's actually used) |
-| [`ensureHandlers()`](#ensurehandlers) | Ensure handlers are attached to this logger |
-| [`validateLevelPositive()`](#validatelevelpositive) | Validate that a level value is positive (> 0) (staticmethod) |
-
-### Changed Methods
-
-| Method | Summary |
-|--------|---------|
-| [`setLevel()`](#setlevel) | Set the logging level (accepts string names and has minimum parameter) |
-| [`_log()`](#_log) | Log a message with the specified level (automatically ensures handlers) |
-| [`addLevelName()`](#addlevelname) | Associate a level name with a numeric level (validates level > 0) (staticmethod) |
-
-### Unchanged Methods
-
-All other methods from `logging.Logger` are inherited unchanged. See the [Python logging.Logger documentation](https://docs.python.org/3/library/logging.html#logging.Logger) for the complete list.
-
-**Version-specific methods:**
-- [`getChildren()`](#getchildren) - 3.12+: Return a set of loggers that are immediate children of this logger
-
-## `apathetic_utils` Function Reference
-
-### getLogger
+### load_jsonc
 
 ```python
-getLogger(
-    logger_name: str | None = None,
-    *,
-    level: str | int | None = None,
-    minimum: bool | None = None
-) -> Logger
+load_jsonc(path: Path) -> dict[str, Any] | list[Any] | None
 ```
 
-Return the registered logger instance.
+Load and parse a JSONC (JSON with Comments) file.
 
-Uses Python's built-in logging registry (`logging.getLogger()`) to retrieve the logger. If no logger name is provided, uses the registered logger name or attempts to auto-infer the logger name from the calling module's top-level package.
-
-> **Behavior:** When `logger_name` is `None`, the logger name is **auto-inferred** from the calling module (improved behavior). To get the root logger, use `getLogger("")` instead. In [Compatibility Mode](#compatibility-mode), `getLogger(None)` returns the root logger (stdlib behavior).
+Supports:
+- Single-line comments (`//` and `#`)
+- Block comments (`/* */`)
+- Trailing commas
+- Empty files or files with only comments (returns `None`)
 
 **Parameters:**
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `logger_name` | str \| None | Optional logger name. If not provided, uses the registered logger name or auto-infers from the calling module. Use `""` to get the root logger. |
-| `level` | str \| int \| None | Exact log level to set on the logger. Accepts both string names (case-insensitive) and numeric values. If provided, sets the logger's level to this value. Defaults to None (no change). |
-| `minimum` | bool \| None | If True, only set the level if it's more verbose (lower numeric value) than the current level. This prevents downgrading from a more verbose level (e.g., TRACE) to a less verbose one (e.g., DEBUG). If None, defaults to False. Only used when `level` is provided. |
+| `path` | `Path` | Path to the JSONC file |
 
 **Returns:**
-- The logger instance from `logging.getLogger()` (as `apathetic_utils.Logger` type)
+- `dict[str, Any] | list[Any]`: Parsed JSON data (dict or list)
+- `None`: If the file is empty or contains only comments
 
 **Raises:**
-- `RuntimeError`: If no logger name is provided and no logger name has been registered and auto-inference fails.
-- `ValueError`: If an invalid log level is provided.
+- `FileNotFoundError`: If the file doesn't exist
+- `ValueError`: If the file is not a file, has invalid JSONC syntax, or has a scalar root
 
 **Example:**
 ```python
-from apathetic_utils import getLogger, registerLogger
+from apathetic_utils import load_jsonc
+from pathlib import Path
 
-# Using registered logger name
-registerLogger("my_app")
-logger = getLogger()  # Gets "my_app" logger
-
-# Or specify logger name directly
-logger = getLogger("my_app")  # Gets "my_app" logger
-
-# Set exact log level
-logger = getLogger("my_app", level="debug")  # Sets level to DEBUG
-
-# Set minimum log level (only if current is less verbose)
-logger = getLogger("my_app", level="info", minimum=True)  # At least INFO
-
-# To get root logger (use "" instead of None)
-logger = getLogger("")  # Returns root logger
+config = load_jsonc(Path("config.jsonc"))
+# {
+#   "name": "my_app",
+#   "version": "1.0.0"
+# }
 ```
 
-### getLoggerOfType
+### load_toml
 
 ```python
-getLoggerOfType(
-    name: str | None,
-    class_type: type[Logger],
-    skip_frames: int = 1,
-    *args: Any,
-    level: str | int | None = None,
-    minimum: bool | None = None,
-    **kwargs: Any
-) -> Logger
+load_toml(path: Path, *, required: bool = False) -> dict[str, Any] | None
 ```
 
-Get a logger of the specified type, creating it if necessary.
+Load and parse a TOML file, supporting Python 3.10 and 3.11+.
+
+Uses:
+- `tomllib` (Python 3.11+ standard library)
+- `tomli` (required for Python 3.10 - must be installed separately)
 
 **Parameters:**
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `name` | str \| None | The name of the logger to get. If None, auto-infers from the calling module. Use `""` for root logger. |
-| `class_type` | type[Logger] | The logger class type to use. |
-| `skip_frames` | int | Number of frames to skip when inferring logger name (default: 1). |
-| `*args` | Any | Additional positional arguments (for future-proofing) |
-| `level` | str \| int \| None | Exact log level to set on the logger. Accepts both string names (case-insensitive) and numeric values. If provided, sets the logger's level to this value. Defaults to None (no change). |
-| `minimum` | bool \| None | If True, only set the level if it's more verbose (lower numeric value) than the current level. This prevents downgrading from a more verbose level (e.g., TRACE) to a less verbose one (e.g., DEBUG). If None, defaults to False. Only used when `level` is provided. |
-| `**kwargs` | Any | Additional keyword arguments (for future-proofing) |
+| `path` | `Path` | Path to the TOML file |
+| `required` | `bool` | If `True`, raise `RuntimeError` when `tomli` is missing on Python 3.10. If `False`, return `None` when unavailable. Defaults to `False`. |
 
 **Returns:**
-- A logger instance of the specified type
+- `dict[str, Any]`: Parsed TOML data as a dictionary
+- `None`: If unavailable and `required=False`
 
 **Raises:**
-- `ValueError`: If an invalid log level is provided.
+- `FileNotFoundError`: If the file doesn't exist
+- `RuntimeError`: If `required=True` and neither `tomllib` nor `tomli` is available
+- `ValueError`: If the file cannot be parsed
 
 **Example:**
 ```python
-from apathetic_utils import Logger, getLoggerOfType
+from apathetic_utils import load_toml
+from pathlib import Path
 
-class AppLogger(Logger):
+pyproject = load_toml(Path("pyproject.toml"), required=True)
+```
+
+## Path Utilities
+
+### normalize_path_string
+
+```python
+normalize_path_string(raw: str) -> str
+```
+
+Normalize a user-supplied path string for cross-platform use.
+
+Industry-standard (Git/Node/Python) rules:
+- Treat both `/` and `\` as valid separators and normalize all to `/`
+- Replace escaped spaces (`\ `) with real spaces
+- Collapse redundant slashes (preserve protocol prefixes like `file://`)
+- Never resolve `.` or `..` or touch the filesystem
+- Never raise for syntax; normalization is always possible
+
+This is purely lexical — it normalizes syntax, not filesystem state.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `raw` | `str` | Raw path string to normalize |
+
+**Returns:**
+- `str`: Normalized path string
+
+**Example:**
+```python
+from apathetic_utils import normalize_path_string
+
+path = normalize_path_string("src\\utils\\file.py")
+# Returns: "src/utils/file.py"
+
+path = normalize_path_string("src//utils///file.py")
+# Returns: "src/utils/file.py"
+```
+
+### has_glob_chars
+
+```python
+has_glob_chars(s: str) -> bool
+```
+
+Check if a string contains glob pattern characters (`*`, `?`, `[`).
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `s` | `str` | String to check |
+
+**Returns:**
+- `bool`: `True` if the string contains glob characters, `False` otherwise
+
+**Example:**
+```python
+from apathetic_utils import has_glob_chars
+
+has_glob_chars("src/**/*.py")  # True
+has_glob_chars("src/file.py")  # False
+```
+
+### get_glob_root
+
+```python
+get_glob_root(pattern: str) -> Path
+```
+
+Return the non-glob portion of a path pattern like `src/**/*.txt`.
+
+Normalizes paths to cross-platform format.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `pattern` | `str` | Glob pattern string |
+
+**Returns:**
+- `Path`: The non-glob portion of the path
+
+**Example:**
+```python
+from apathetic_utils import get_glob_root
+
+root = get_glob_root("src/**/*.txt")
+# Returns: Path("src")
+
+root = get_glob_root("tests/unit/**/*.py")
+# Returns: Path("tests/unit")
+```
+
+## Pattern Matching
+
+### fnmatchcase_portable
+
+```python
+fnmatchcase_portable(path: str, pattern: str) -> bool
+```
+
+Case-sensitive glob pattern matching with Python 3.10 `**` backport.
+
+Uses `fnmatchcase` (case-sensitive) as the base, with backported support for recursive `**` patterns on Python 3.10.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `path` | `str` | The path to match against the pattern |
+| `pattern` | `str` | The glob pattern to match |
+
+**Returns:**
+- `bool`: `True` if the path matches the pattern, `False` otherwise
+
+**Example:**
+```python
+from apathetic_utils import fnmatchcase_portable
+
+fnmatchcase_portable("src/utils/file.py", "src/**/*.py")  # True
+fnmatchcase_portable("deep/nested/file.py", "**/*.py")    # True
+fnmatchcase_portable("src/file.py", "src/*.py")            # True
+```
+
+### is_excluded_raw
+
+```python
+is_excluded_raw(
+    path: Path | str,
+    exclude_patterns: list[str],
+    root: Path | str
+) -> bool
+```
+
+Smart matcher for normalized inputs to check if a path matches exclusion patterns.
+
+- Treats `path` as relative to `root` unless already absolute
+- If `root` is a file, match directly
+- Handles absolute or relative glob patterns
+- Supports patterns with `../` to match files outside the exclude root
+- Supports `**/` patterns for recursive matching
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `path` | `Path \| str` | Path to check against exclusion patterns |
+| `exclude_patterns` | `list[str]` | List of glob patterns to exclude |
+| `root` | `Path \| str` | Root directory for relative path resolution |
+
+**Returns:**
+- `bool`: `True` if the path matches any exclusion pattern, `False` otherwise
+
+**Example:**
+```python
+from apathetic_utils import is_excluded_raw
+from pathlib import Path
+
+patterns = ["**/__pycache__/**", "*.pyc", "tests/**"]
+root = Path(".")
+
+is_excluded_raw("src/__pycache__/file.pyc", patterns, root)  # True
+is_excluded_raw("src/utils/file.py", patterns, root)         # False
+```
+
+## System Detection
+
+### is_ci
+
+```python
+is_ci() -> bool
+```
+
+Check if running in a CI environment.
+
+Returns `True` if any of the following environment variables are set:
+- `CI`: Generic CI indicator (set by most CI systems)
+- `GITHUB_ACTIONS`: GitHub Actions specific
+- `GIT_TAG`: Indicates a tagged build
+- `GITHUB_REF`: GitHub Actions ref (branch/tag)
+
+**Returns:**
+- `bool`: `True` if running in CI, `False` otherwise
+
+**Example:**
+```python
+from apathetic_utils import is_ci
+
+if is_ci():
+    print("Running in CI environment")
+    # Adjust behavior for CI
+```
+
+### is_running_under_pytest
+
+```python
+is_running_under_pytest() -> bool
+```
+
+Detect if code is running under pytest.
+
+Checks multiple indicators:
+- Environment variables set by pytest
+- Command-line arguments containing 'pytest'
+
+**Returns:**
+- `bool`: `True` if running under pytest, `False` otherwise
+
+**Example:**
+```python
+from apathetic_utils import is_running_under_pytest
+
+if is_running_under_pytest():
+    # Use test-specific configuration
     pass
-
-logger = getLoggerOfType("my_app", AppLogger)
-
-# Set exact log level
-logger = getLoggerOfType("my_app", AppLogger, level="debug")
-
-# Set minimum log level
-logger = getLoggerOfType("my_app", AppLogger, level="info", minimum=True)
 ```
 
-### registerLogger
+### detect_runtime_mode
 
 ```python
-registerLogger(
-    logger_name: str | None = None,
-    logger_class: type[Logger] | None = None,
-    *,
-    target_python_version: tuple[int, int] | None = None,
-    log_level_env_vars: list[str] | None = None,
-    default_log_level: str | None = None,
-    propagate: bool | None = None,
-    compat_mode: bool | None = None
-) -> None
+detect_runtime_mode(package_name: str) -> str
 ```
 
-Register a logger for use by `getLogger()`. This registers the logger name and extends the logging module with custom levels if needed.
-
-If `logger_name` is not provided, the top-level package is automatically extracted from the calling module's `__package__` attribute.
-
-If `logger_class` is provided and has an `extendLoggingModule()` method, it will be called to extend the logging module with custom levels and set the logger class. If `logger_class` is not provided, the default `Logger` class will be used.
+Detect how the package is being executed.
 
 **Parameters:**
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `logger_name` | str \| None | The logger name to register. If None, auto-infers from the calling module. |
-| `logger_class` | type[Logger] \| None | Optional logger class to use. If provided and the class has an `extendLoggingModule()` method, it will be called. If None, defaults to the standard `Logger` class. |
-| `target_python_version` | tuple[int, int] \| None | Optional target Python version (major, minor) tuple. If provided, sets the target Python version in the registry permanently. Defaults to None (no change). |
-| `log_level_env_vars` | list[str] \| None | Optional list of environment variable names to check for log level. If provided, sets the log level environment variables in the registry permanently. Defaults to None (no change). |
-| `default_log_level` | str \| None | Optional default log level name. If provided, sets the default log level in the registry permanently. Defaults to None (no change). |
-| `propagate` | bool \| None | Optional propagate setting. If provided, sets the propagate value in the registry permanently. If None, uses registered propagate setting or falls back to DEFAULT_PROPAGATE from constants.py. Defaults to None (no change). |
-| `compat_mode` | bool \| None | Optional compatibility mode setting. If provided, sets the compatibility mode in the registry permanently. When `True`, enables stdlib-compatible behavior with no breaking changes (e.g., `getLogger(None)` returns root logger). When `False` (default), uses improved behavior with enhancements. If `None`, uses registered compatibility mode setting or defaults to `False`. Defaults to `None` (no change). |
-
-**Example:**
-```python
-from apathetic_utils import registerLogger
-
-registerLogger("my_app")
-# Or let it auto-infer:
-registerLogger()  # Uses top-level package name
-
-# Or with a custom logger class:
-from apathetic_utils import Logger
-
-class AppLogger(Logger):
-    pass
-
-registerLogger("my_app", AppLogger)
-
-# Or with convenience parameters to configure registry settings:
-registerLogger(
-    "my_app",
-    target_python_version=(3, 10),
-    log_level_env_vars=["MYAPP_LOG_LEVEL", "LOG_LEVEL"],
-    default_log_level="info",
-    propagate=False,
-    compat_mode=True,  # Enable stdlib compatibility
-)
-```
-
-### registerCompatibilityMode
-
-```python
-registerCompatibilityMode(compat_mode: bool) -> None
-```
-
-Register the compatibility mode setting for stdlib drop-in replacement.
-
-This sets the compatibility mode that will be used when creating loggers. If not set, the library defaults to `False` (improved behavior with enhancements).
-
-**Compatibility Modes:**
-
-- **`compat_mode=False` (default):** Improved behavior with enhancements. May include changes from stdlib behavior (e.g., `getLogger(None)` auto-infers logger name from calling module).
-- **`compat_mode=True`:** Standard library compatible behavior with no breaking changes. Restores stdlib behavior where possible (e.g., `getLogger(None)` returns root logger).
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `compat_mode` | bool | Compatibility mode setting. When `True`, enables stdlib-compatible behavior with no breaking changes. When `False` (default), uses improved behavior with enhancements. |
-
-**Example:**
-```python
-from apathetic_utils import registerCompatibilityMode
-
-# Enable stdlib-compatible behavior (no breaking changes)
-registerCompatibilityMode(compat_mode=True)
-# Now getLogger(None) returns root logger (stdlib behavior)
-
-# Use improved behavior with enhancements (default)
-registerCompatibilityMode(compat_mode=False)
-# Now getLogger(None) auto-infers logger name (improved behavior)
-```
-
-### getCompatibilityMode
-
-```python
-getCompatibilityMode() -> bool
-```
-
-Get the compatibility mode setting.
-
-Returns the registered compatibility mode setting, or `False` (improved behavior) if not registered.
+| `package_name` | `str` | Name of the package to check |
 
 **Returns:**
-- `bool`: Compatibility mode setting. `False` means improved behavior with enhancements (default). `True` means stdlib-compatible behavior with no breaking changes.
+- `str`: Runtime mode, one of:
+  - `"installed"`: Package installed via pip/poetry
+  - `"standalone"`: Single-file standalone script
+  - `"zipapp"`: Python zipapp (`.pyz` file)
+  - `"frozen"`: Frozen executable (PyInstaller, etc.)
 
 **Example:**
 ```python
-from apathetic_utils import getCompatibilityMode
+from apathetic_utils import detect_runtime_mode
 
-compat_mode = getCompatibilityMode()
-print(compat_mode)  # False (default: improved behavior)
+mode = detect_runtime_mode("my_package")
+print(f"Running in {mode} mode")
 ```
 
-### registerLogLevelEnvVars
+### capture_output
 
 ```python
-registerLogLevelEnvVars(env_vars: list[str]) -> None
+capture_output() -> ContextManager[CapturedOutput]
 ```
 
-Register environment variable names to check for log level.
+Temporarily capture stdout and stderr.
 
-The environment variables will be checked in order, and the first non-empty value found will be used.
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `env_vars` | list[str] | List of environment variable names to check (e.g., `["MYAPP_LOG_LEVEL", "LOG_LEVEL"]`) |
-
-**Example:**
-```python
-from apathetic_utils import registerLogLevelEnvVars
-
-registerLogLevelEnvVars(["MYAPP_LOG_LEVEL", "LOG_LEVEL"])
-```
-
-### registerDefaultLogLevel
-
-```python
-registerDefaultLogLevel(default_level: str) -> None
-```
-
-Register the default log level to use when no other source is found.
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `default_level` | str | Default log level name (e.g., `"info"`, `"warning"`) |
-
-**Example:**
-```python
-from apathetic_utils import registerDefaultLogLevel
-
-registerDefaultLogLevel("warning")
-```
-
-### registerTargetPythonVersion
-
-```python
-registerTargetPythonVersion(version: tuple[int, int] | None) -> None
-```
-
-Register the target Python version for compatibility checking.
-
-This sets the global target Python version that the library will use when checking for feature availability. Functions requiring a newer Python version than the registered target will raise a `NotImplementedError`, even if the runtime Python version is sufficient.
-
-If not set, the library defaults to `TARGET_PYTHON_VERSION` (3.10) from constants.py.
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `version` | tuple[int, int] \| None | A tuple (major, minor) representing the target Python version (e.g., `(3, 10)` for Python 3.10). If None, the registration is skipped. |
-
-**Example:**
-```python
-from apathetic_utils import registerTargetPythonVersion
-
-# Target Python 3.10
-registerTargetPythonVersion((3, 10))
-
-# Target Python 3.11
-registerTargetPythonVersion((3, 11))
-```
-
-**Note:** This is useful when developing on a newer Python version (e.g., 3.12) but targeting an older version (e.g., 3.10). The library will validate function calls against your target version, preventing accidental use of features that don't exist in your target environment.
-
-### registerPropagate
-
-```python
-registerPropagate(*, propagate: bool | None) -> None
-```
-
-Register the propagate setting for loggers.
-
-This sets the default propagate value that will be used when creating loggers. If not set, the library defaults to `DEFAULT_PROPAGATE` (False) from constants.py.
-
-When `propagate` is `False`, loggers do not propagate messages to parent loggers, avoiding duplicate root logs.
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `propagate` | bool \| None | Propagate setting (True or False). If None, the registration is skipped. |
-
-**Example:**
-```python
-from apathetic_utils import registerPropagate
-
-# Enable propagation (messages propagate to parent loggers)
-registerPropagate(propagate=True)
-
-# Disable propagation (default, avoids duplicate logs)
-registerPropagate(propagate=False)
-```
-
-### safeLog
-
-```python
-safeLog(msg: str) -> None
-```
-
-Emergency logger that never fails.
-
-This function bypasses the normal logging system and writes directly to `sys.__stderr__`. It's designed for use in error handlers where the logging system itself might be broken.
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `msg` | str | Message to log |
-
-**Example:**
-```python
-from apathetic_utils import safeLog
-
-try:
-    # Some operation
-    pass
-except Exception:
-    safeLog("Critical error: logging system may be broken")
-```
-
-### safeTrace
-
-```python
-safeTrace(label: str, *args: Any, icon: str = "🧪") -> None
-```
-
-Debug tracing function for test development. Only active when `safeTrace` environment variable is set.
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `label` | str | Trace label |
-| `*args` | Any | Additional arguments to trace |
-| `icon` | str | Icon to use (default: `"🧪"`) |
-
-### makeSafeTrace
-
-```python
-makeSafeTrace(icon: str = "🧪") -> Callable
-```
-
-Create a test trace function with a custom icon.
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `icon` | str | Icon to use |
+Any exception raised inside the block is re-raised with the captured output attached as `exc.captured_output`.
 
 **Returns:**
-- `Callable`: Test trace function
+- `ContextManager[CapturedOutput]`: Context manager that yields a `CapturedOutput` object
 
-### hasLogger
+**CapturedOutput Attributes:**
 
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `stdout` | `StringIO` | Captured stdout |
+| `stderr` | `StringIO` | Captured stderr |
+| `merged` | `StringIO` | Merged stdout and stderr |
+
+**CapturedOutput Methods:**
+
+| Method | Description |
+|--------|-------------|
+| `as_dict() -> dict[str, str]` | Return contents as plain strings for serialization |
+
+**Example:**
 ```python
-hasLogger(logger_name: str) -> bool
+from apathetic_utils import capture_output
+import sys
+
+with capture_output() as cap:
+    print("Hello, world!")
+    print("Error message", file=sys.stderr)
+
+print(f"stdout: {cap.stdout.getvalue()}")
+print(f"stderr: {cap.stderr.getvalue()}")
+print(f"merged: {cap.merged.getvalue()}")
+
+# Or convert to dict
+output = cap.as_dict()
 ```
 
-Check if a logger exists in the logging manager's registry.
+### get_sys_version_info
 
-**Parameters:**
+```python
+get_sys_version_info() -> tuple[int, int, int] | tuple[int, int, int, str, int]
+```
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `logger_name` | str | The name of the logger to check |
+Get Python version information.
+
+Wrapper for `sys.version_info`.
 
 **Returns:**
-- `bool`: True if the logger exists, False otherwise
+- `tuple[int, int, int]`: Version tuple `(major, minor, micro)`
+- `tuple[int, int, int, str, int]`: Version tuple with releaselevel and serial (for release candidates)
 
-### removeLogger
-
+**Example:**
 ```python
-removeLogger(logger_name: str) -> None
+from apathetic_utils import get_sys_version_info
+
+version = get_sys_version_info()
+print(f"Python {version[0]}.{version[1]}.{version[2]}")
 ```
 
-Remove a logger from the logging manager's registry.
+## Text Processing
+
+### plural
+
+```python
+plural(obj: Any) -> str
+```
+
+Return `'s'` if `obj` represents a plural count.
+
+Accepts ints, floats, and any object implementing `__len__()`. Returns `''` for singular or zero.
 
 **Parameters:**
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `logger_name` | str | The name of the logger to remove |
-
-### getDefaultLoggerName
-
-```python
-getDefaultLoggerName(
-    logger_name: str | None = None,
-    *,
-    check_registry: bool = True,
-    skip_frames: int = 1,
-    raise_on_error: bool = False,
-    infer: bool = True,
-    register: bool = False
-) -> str | None
-```
-
-Get default logger name with optional inference from caller's frame.
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `logger_name` | str \| None | Explicit logger name, or None to infer (default: None) |
-| `check_registry` | bool | If True, check registry before inferring (default: True) |
-| `skip_frames` | int | Number of frames to skip (default: 1) |
-| `raise_on_error` | bool | If True, raise RuntimeError if logger name cannot be resolved. If False (default), return None instead |
-| `infer` | bool | If True (default), attempt to infer logger name from caller's frame when not found in registry. If False, skip inference |
-| `register` | bool | If True, store inferred name in registry. If False (default), do not modify registry. Note: Explicit names are never stored regardless of this parameter |
+| `obj` | `Any` | Object to check (int, float, or object with `__len__()`) |
 
 **Returns:**
-- `str | None`: Resolved logger name, or None if cannot be resolved and raise_on_error=False
+- `str`: `'s'` for plural, `''` for singular or zero
+
+**Example:**
+```python
+from apathetic_utils import plural
+
+count = 5
+print(f"{count} file{plural(count)}")  # "5 files"
+
+count = 1
+print(f"{count} file{plural(count)}")  # "1 file"
+
+items = [1, 2, 3]
+print(f"{len(items)} item{plural(items)}")  # "3 items"
+```
+
+### remove_path_in_error_message
+
+```python
+remove_path_in_error_message(inner_msg: str, path: Path) -> str
+```
+
+Remove redundant file path mentions (and nearby filler) from error messages.
+
+Useful when wrapping a lower-level exception that already embeds its own file reference, so the higher-level message can use its own path without duplication.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `inner_msg` | `str` | Error message that may contain path references |
+| `path` | `Path` | Path to remove from the message |
+
+**Returns:**
+- `str`: Error message with path references removed
+
+**Example:**
+```python
+from apathetic_utils import remove_path_in_error_message
+from pathlib import Path
+
+error_msg = "Invalid JSONC syntax in /path/to/config.jsonc: Expecting value"
+path = Path("/path/to/config.jsonc")
+
+clean_msg = remove_path_in_error_message(error_msg, path)
+# Returns: "Invalid JSONC syntax: Expecting value"
+```
+
+## Type Utilities
+
+### safe_isinstance
+
+```python
+safe_isinstance(value: Any, expected_type: Any) -> bool
+```
+
+Like `isinstance()`, but safe for TypedDicts and typing generics.
+
+Handles:
+- `typing.Union`, `Optional`, `Any`
+- `typing.NotRequired`
+- TypedDict subclasses
+- `list[...]` with inner types
+- `dict[...]` with key/value types
+- `tuple[...]` with element types
+- Defensive fallback for exotic typing constructs
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `value` | `Any` | Value to check |
+| `expected_type` | `Any` | Type to check against |
+
+**Returns:**
+- `bool`: `True` if value matches the expected type, `False` otherwise
+
+**Example:**
+```python
+from apathetic_utils import safe_isinstance
+from typing import TypedDict, Optional
+
+class Config(TypedDict):
+    name: str
+    value: int
+
+data = {"name": "test", "value": 42}
+
+# Works with TypedDict
+safe_isinstance(data, Config)  # True
+
+# Works with generics
+safe_isinstance([1, 2, 3], list[int])  # True
+safe_isinstance({"a": 1, "b": 2}, dict[str, int])  # True
+
+# Works with Optional
+safe_isinstance(None, Optional[str])  # True
+safe_isinstance("test", Optional[str])  # True
+```
+
+### literal_to_set
+
+```python
+literal_to_set(literal_type: Any) -> set[Any]
+```
+
+Extract values from a `Literal` type as a set.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `literal_type` | `Any` | A `Literal` type (e.g., `Literal["a", "b"]`) |
+
+**Returns:**
+- `set[Any]`: A set containing all values from the `Literal` type
 
 **Raises:**
-- `RuntimeError`: If logger name cannot be resolved and raise_on_error=True
+- `TypeError`: If the input is not a `Literal` type
 
-### getLogLevelEnvVars
-
+**Example:**
 ```python
-getLogLevelEnvVars() -> list[str]
+from apathetic_utils import literal_to_set
+from typing import Literal
+
+Mode = Literal["dev", "prod", "test"]
+valid_modes = literal_to_set(Mode)
+# Returns: {"dev", "prod", "test"}
+
+if "dev" in valid_modes:
+    print("Valid mode")
 ```
 
-Get the environment variable names to check for log level.
+### cast_hint
 
-Returns the registered environment variable names, or the default environment variables if none are registered.
+```python
+cast_hint(typ: type[T], value: Any) -> T
+```
+
+Explicit cast that documents intent but is purely for type hinting.
+
+A drop-in replacement for `typing.cast`, meant for places where:
+- You want to silence mypy's redundant-cast warnings
+- You want to signal "this narrowing is intentional"
+- You need IDEs (like Pylance) to retain strong inference on a value
+
+Does not handle `Union`, `Optional`, or nested generics: stick to `cast()` for those, because unions almost always represent a meaningful type narrowing.
+
+This function performs **no runtime checks**.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `typ` | `type[T]` | Target type |
+| `value` | `Any` | Value to cast |
 
 **Returns:**
-- `list[str]`: List of environment variable names to check for log level. Defaults to `["LOG_LEVEL"]` if not registered
+- `T`: The value (unchanged at runtime)
 
-### getDefaultLogLevel
-
+**Example:**
 ```python
-getDefaultLogLevel() -> str
+from apathetic_utils import cast_hint
+
+# Type narrowing for type checkers
+value: Any = get_data()
+typed_value = cast_hint(dict[str, int], value)
+# typed_value is now inferred as dict[str, int]
 ```
 
-Get the default log level.
+### schema_from_typeddict
 
-Returns the registered default log level, or the module default if none is registered.
+```python
+schema_from_typeddict(td: type[Any]) -> dict[str, Any]
+```
+
+Extract field names and their annotated types from a TypedDict.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `td` | `type[Any]` | TypedDict class |
 
 **Returns:**
-- `str`: Default log level name (e.g., "detail", "info"). Defaults to `"detail"` if not registered
-
-### getRegisteredLoggerName
-
-```python
-getRegisteredLoggerName() -> str | None
-```
-
-Get the registered logger name.
-
-Returns the registered logger name, or None if no logger name has been registered. Unlike `getDefaultLoggerName()`, this does not perform inference - it only returns the explicitly registered value.
-
-**Returns:**
-- `str | None`: Registered logger name, or None if not registered
-
-### getTargetPythonVersion
-
-```python
-getTargetPythonVersion() -> tuple[int, int]
-```
-
-Get the target Python version.
-
-Returns the registered target Python version, or the minimum supported version if none is registered.
-
-**Returns:**
-- `tuple[int, int]`: Target Python version as (major, minor) tuple. Defaults to `(3, 10)` if not registered
-
-### getDefaultPropagate
-
-```python
-getDefaultPropagate() -> bool
-```
-
-Get the default propagate setting.
-
-Returns the registered propagate setting, or the module default if none is registered.
-
-**Returns:**
-- `bool`: Default propagate setting (True or False). Defaults to `False` if not registered
-
-### basicConfig
-
-```python
-basicConfig(*args: Any, **kwargs: Any) -> None
-```
-
-Wrapper for `logging.basicConfig()`. Configure the logging system.
-
-For detailed documentation, see the [Python logging.basicConfig() documentation](https://docs.python.org/3/library/logging.html#logging.basicConfig).
-
-### addLevelName
-
-```python
-addLevelName(level: int, level_name: str) -> None
-```
-
-Wrapper for `logging.addLevelName()`. Associate a level name with a numeric level.
-
-For detailed documentation, see the [Python logging.addLevelName() documentation](https://docs.python.org/3/library/logging.html#logging.addLevelName).
-
-### getLevelName
-
-```python
-getLevelName(level: int | str, *, strict: bool = False) -> str | int
-```
-
-Return the textual or numeric representation of a logging level.
-
-Behavior depends on compatibility mode (set via `registerCompatibilityMode()`):
-
-**Compatibility mode enabled (`compat_mode=True`):**
-- Behaves like stdlib `logging.getLevelName()` (bidirectional)
-- Returns `str` for integer input, `int` for string input (known levels)
-- Returns `"Level {level}"` string for unknown levels
-- Value-add: Uppercases string inputs before processing (case-insensitive)
-
-**Compatibility mode disabled (`compat_mode=False`, default):**
-- Accepts both integer and string input
-- For string input: uppercases and returns the string (value-add, no conversion)
-- For integer input: returns level name as string (never returns `int`)
-- Optional strict mode to raise `ValueError` for unknown integer levels
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `level` | int \| str | Log level as integer or string name |
-| `strict` | bool | If True, raise ValueError for unknown levels. If False (default), returns "Level {level}" format for unknown integer levels (matching stdlib behavior). Only used when compatibility mode is disabled and level is an integer. |
-
-**Returns:**
-- Compatibility mode enabled: `str | int` (bidirectional like stdlib)
-- Compatibility mode disabled: `str` (always string; string input is uppercased and returned, int input is converted to name)
-
-**Raises:**
-- `ValueError`: If strict=True and level is an integer that cannot be resolved to a known level name
+- `dict[str, Any]`: Dictionary mapping field names to their types
 
 **Example:**
 ```python
-from apathetic_utils import getLevelName, getLevelNumber, registerCompatibilityMode
+from apathetic_utils import schema_from_typeddict
+from typing import TypedDict
 
-# Compatibility mode enabled (stdlib-like behavior):
-registerCompatibilityMode(compat_mode=True)
-getLevelName(10)  # "DEBUG" (str)
-getLevelName("DEBUG")  # 10 (int)
-getLevelName("debug")  # 10 (int, case-insensitive)
+class Config(TypedDict):
+    name: str
+    value: int
 
-# Compatibility mode disabled (improved behavior):
-registerCompatibilityMode(compat_mode=False)
-getLevelName(10)  # "DEBUG"
-getLevelName("DEBUG")  # "DEBUG" (uppercased and returned)
-getLevelName("debug")  # "DEBUG" (uppercased)
-getLevelName(999, strict=True)  # ValueError: Unknown log level: 999
-
-# For string→int conversion when compat mode disabled, use getLevelNumber()
-getLevelNumber("DEBUG")  # 10
-```
-
-### getLevelNumber
-
-```python
-getLevelNumber(level: str | int) -> int
-```
-
-Convert a log level name to its numeric value.
-
-Recommended way to convert string level names to integers. This function explicitly performs string→int conversion, unlike `getLevelName()` which has bidirectional behavior for backward compatibility.
-
-Handles all levels registered via `logging.addLevelName()` (including standard library levels, custom apathetic levels, and user-registered levels).
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `level` | str \| int | Log level as string name (case-insensitive) or integer |
-
-**Returns:**
-- `int`: Integer level value
-
-**Raises:**
-- `ValueError`: If level cannot be resolved to a known level
-
-**Example:**
-```python
-from apathetic_utils import getLevelNumber
-
-# Known levels return int
-getLevelNumber("DEBUG")  # 10
-getLevelNumber("TRACE")  # 5
-getLevelNumber(20)       # 20
-
-# Unknown level raises ValueError
-getLevelNumber("UNKNOWN")  # ValueError: Unknown log level: 'UNKNOWN'
-```
-
-**See Also:**
-- `getLevelName()` - Bidirectional conversion with compatibility mode
-- `getLevelNameStr()` - Unidirectional conversion (always returns string)
-
-### getLevelNameStr
-
-```python
-getLevelNameStr(level: int | str, *, strict: bool = False) -> str
-```
-
-Convert a log level to its string name representation.
-
-Unidirectional function that always returns a string. This is the recommended way to convert log levels to strings when you want guaranteed string output without compatibility mode behavior.
-
-Unlike `getLevelName()` which has compatibility mode and bidirectional behavior, this function always returns a string:
-- Integer input: converts to level name string (returns "Level {level}" for unknown levels unless strict=True)
-- String input: validates level exists, then returns uppercased string
-
-Handles all levels registered via `logging.addLevelName()` (including standard library levels, custom apathetic levels, and user-registered levels).
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `level` | int \| str | Log level as integer or string name (case-insensitive) |
-| `strict` | bool | If True, raise ValueError for unknown integer levels. If False (default), returns "Level {level}" format for unknown integer levels (matching stdlib behavior). |
-
-**Returns:**
-- `str`: Level name as uppercase string
-
-**Raises:**
-- `ValueError`: If string level cannot be resolved to a known level, or if strict=True and integer level cannot be resolved to a known level
-
-**Example:**
-```python
-from apathetic_utils import getLevelNameStr
-
-# Integer input converts to level name
-getLevelNameStr(10)  # "DEBUG"
-getLevelNameStr(5)   # "TRACE"
-getLevelNameStr(20)  # "INFO"
-
-# String input validates and returns uppercased string
-getLevelNameStr("DEBUG")  # "DEBUG"
-getLevelNameStr("debug")  # "DEBUG"
-getLevelNameStr("Info")  # "INFO"
-
-# Unknown integer levels return "Level {level}" format (strict=False, default)
-getLevelNameStr(999)  # "Level 999"
-
-# Unknown integer levels raise ValueError when strict=True
-getLevelNameStr(999, strict=True)  # ValueError: Unknown log level: 999
-
-# Unknown string input raises ValueError
-getLevelNameStr("UNKNOWN")  # ValueError: Unknown log level: 'UNKNOWN'
-```
-
-**See Also:**
-- `getLevelNumber()` - Convert string to int (complementary function)
-- `getLevelName()` - Bidirectional conversion with compatibility mode
-
-### getLevelNamesMapping
-
-```python
-getLevelNamesMapping() -> dict[int, str]
-```
-
-**Requires Python 3.11+**
-
-Wrapper for `logging.getLevelNamesMapping()`. Get mapping of level names to numeric values.
-
-For detailed documentation, see the [Python logging.getLevelNamesMapping() documentation](https://docs.python.org/3.11/library/logging.html#logging.getLevelNamesMapping).
-
-### getLoggerClass
-
-```python
-getLoggerClass() -> type[logging.Logger]
-```
-
-Wrapper for `logging.getLoggerClass()`. Return the class to be used when instantiating a logger.
-
-For detailed documentation, see the [Python logging.getLoggerClass() documentation](https://docs.python.org/3/library/logging.html#logging.getLoggerClass).
-
-### setLoggerClass
-
-```python
-setLoggerClass(klass: type[logging.Logger]) -> None
-```
-
-Wrapper for `logging.setLoggerClass()`. Set the class to be used when instantiating a logger.
-
-For detailed documentation, see the [Python logging.setLoggerClass() documentation](https://docs.python.org/3/library/logging.html#logging.setLoggerClass).
-
-### getLogRecordFactory
-
-```python
-getLogRecordFactory() -> Callable
-```
-
-Wrapper for `logging.getLogRecordFactory()`. Return the factory function used to create LogRecords.
-
-For detailed documentation, see the [Python logging.getLogRecordFactory() documentation](https://docs.python.org/3/library/logging.html#logging.getLogRecordFactory).
-
-### setLogRecordFactory
-
-```python
-setLogRecordFactory(factory: Callable) -> None
-```
-
-Wrapper for `logging.setLogRecordFactory()`. Set the factory function used to create LogRecords.
-
-For detailed documentation, see the [Python logging.setLogRecordFactory() documentation](https://docs.python.org/3/library/logging.html#logging.setLogRecordFactory).
-
-### shutdown
-
-```python
-shutdown() -> None
-```
-
-Wrapper for `logging.shutdown()`. Perform an orderly shutdown of the logging system.
-
-For detailed documentation, see the [Python logging.shutdown() documentation](https://docs.python.org/3/library/logging.html#logging.shutdown).
-
-### disable
-
-```python
-disable(level: int) -> None
-```
-
-Wrapper for `logging.disable()`. Disable all logging calls of severity 'level' and below.
-
-For detailed documentation, see the [Python logging.disable() documentation](https://docs.python.org/3/library/logging.html#logging.disable).
-
-### captureWarnings
-
-```python
-captureWarnings(capture: bool) -> None
-```
-
-Wrapper for `logging.captureWarnings()`. Capture warnings issued by the warnings module.
-
-For detailed documentation, see the [Python logging.captureWarnings() documentation](https://docs.python.org/3/library/logging.html#logging.captureWarnings).
-
-### critical
-
-```python
-critical(msg: str, *args: Any, **kwargs: Any) -> None
-```
-
-Wrapper for `logging.critical()`. Log a message with severity CRITICAL.
-
-For detailed documentation, see the [Python logging.critical() documentation](https://docs.python.org/3/library/logging.html#logging.critical).
-
-### debug
-
-```python
-debug(msg: str, *args: Any, **kwargs: Any) -> None
-```
-
-Wrapper for `logging.debug()`. Log a message with severity DEBUG.
-
-For detailed documentation, see the [Python logging.debug() documentation](https://docs.python.org/3/library/logging.html#logging.debug).
-
-### error
-
-```python
-error(msg: str, *args: Any, **kwargs: Any) -> None
-```
-
-Wrapper for `logging.error()`. Log a message with severity ERROR.
-
-For detailed documentation, see the [Python logging.error() documentation](https://docs.python.org/3/library/logging.html#logging.error).
-
-### exception
-
-```python
-exception(msg: str, *args: Any, **kwargs: Any) -> None
-```
-
-Wrapper for `logging.exception()`. Log a message with severity ERROR with exception info.
-
-For detailed documentation, see the [Python logging.exception() documentation](https://docs.python.org/3/library/logging.html#logging.exception).
-
-### fatal
-
-```python
-fatal(msg: str, *args: Any, **kwargs: Any) -> None
-```
-
-Wrapper for `logging.fatal()`. Log a message with severity CRITICAL.
-
-For detailed documentation, see the [Python logging.fatal() documentation](https://docs.python.org/3/library/logging.html#logging.fatal).
-
-### info
-
-```python
-info(msg: str, *args: Any, **kwargs: Any) -> None
-```
-
-Wrapper for `logging.info()`. Log a message with severity INFO.
-
-For detailed documentation, see the [Python logging.info() documentation](https://docs.python.org/3/library/logging.html#logging.info).
-
-### log
-
-```python
-log(level: int, msg: str, *args: Any, **kwargs: Any) -> None
-```
-
-Wrapper for `logging.log()`. Log a message with an explicit level.
-
-For detailed documentation, see the [Python logging.log() documentation](https://docs.python.org/3/library/logging.html#logging.log).
-
-### warn
-
-```python
-warn(msg: str, *args: Any, **kwargs: Any) -> None
-```
-
-Wrapper for `logging.warn()`. Log a message with severity WARNING.
-
-For detailed documentation, see the [Python logging.warn() documentation](https://docs.python.org/3/library/logging.html#logging.warn).
-
-### warning
-
-```python
-warning(msg: str, *args: Any, **kwargs: Any) -> None
-```
-
-Wrapper for `logging.warning()`. Log a message with severity WARNING.
-
-For detailed documentation, see the [Python logging.warning() documentation](https://docs.python.org/3/library/logging.html#logging.warning).
-
-### trace
-
-```python
-trace(msg: str, *args: Any, **kwargs: Any) -> None
-```
-
-Log a message with severity TRACE on the root logger.
-
-TRACE is more verbose than DEBUG. This function gets an `apathetic_utils.Logger` instance (ensuring the root logger is an apathetic logger) and calls its `trace()` method.
-
-If the logger has no handlers, `basicConfig()` is automatically called to add a console handler with a pre-defined format.
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `msg` | str | Message to log |
-| `*args` | Any | Format arguments for message formatting |
-| `**kwargs` | Any | Additional keyword arguments (e.g., `exc_info`, `stacklevel`) |
-
-**Example:**
-```python
-import apathetic_utils
-
-# Log a trace message
-apathetic_utils.trace("Detailed trace information: %s", variable)
-```
-
-### detail
-
-```python
-detail(msg: str, *args: Any, **kwargs: Any) -> None
-```
-
-Log a message with severity DETAIL on the root logger.
-
-DETAIL is more detailed than INFO. This function gets an `apathetic_utils.Logger` instance (ensuring the root logger is an apathetic logger) and calls its `detail()` method.
-
-If the logger has no handlers, `basicConfig()` is automatically called to add a console handler with a pre-defined format.
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `msg` | str | Message to log |
-| `*args` | Any | Format arguments for message formatting |
-| `**kwargs` | Any | Additional keyword arguments (e.g., `exc_info`, `stacklevel`) |
-
-**Example:**
-```python
-import apathetic_utils
-
-# Log a detail message
-apathetic_utils.detail("Additional detail: %s", information)
-```
-
-### minimal
-
-```python
-minimal(msg: str, *args: Any, **kwargs: Any) -> None
-```
-
-Log a message with severity MINIMAL on the root logger.
-
-MINIMAL is less detailed than INFO. This function gets an `apathetic_utils.Logger` instance (ensuring the root logger is an apathetic logger) and calls its `minimal()` method.
-
-If the logger has no handlers, `basicConfig()` is automatically called to add a console handler with a pre-defined format.
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `msg` | str | Message to log |
-| `*args` | Any | Format arguments for message formatting |
-| `**kwargs` | Any | Additional keyword arguments (e.g., `exc_info`, `stacklevel`) |
-
-**Example:**
-```python
-import apathetic_utils
-
-# Log a minimal message
-apathetic_utils.minimal("Minimal information: %s", summary)
-```
-
-### getHandlerByName
-
-```python
-getHandlerByName(name: str) -> logging.Handler | None
-```
-
-**Requires Python 3.12+**
-
-Wrapper for `logging.getHandlerByName()`. Get a handler with the specified name.
-
-For detailed documentation, see the [Python logging.getHandlerByName() documentation](https://docs.python.org/3.12/library/logging.html#logging.getHandlerByName).
-
-### getHandlerNames
-
-```python
-getHandlerNames() -> list[str]
-```
-
-**Requires Python 3.12+**
-
-Wrapper for `logging.getHandlerNames()`. Return all known handler names.
-
-For detailed documentation, see the [Python logging.getHandlerNames() documentation](https://docs.python.org/3.12/library/logging.html#logging.getHandlerNames).
-
-### makeLogRecord
-
-```python
-makeLogRecord(
-    name: str,
-    level: int,
-    fn: str,
-    lno: int,
-    msg: str,
-    args: tuple,
-    exc_info: Any
-) -> logging.LogRecord
-```
-
-Wrapper for `logging.makeLogRecord()`. Create a LogRecord from the given parameters.
-
-For detailed documentation, see the [Python logging.makeLogRecord() documentation](https://docs.python.org/3/library/logging.html#logging.makeLogRecord).
-
-### currentframe
-
-```python
-currentframe(*args: Any, **kwargs: Any) -> FrameType | None
-```
-
-Wrapper for `logging.currentframe()`. Return the frame object for the caller's stack frame.
-
-For detailed documentation, see the [Python logging.currentframe() documentation](https://docs.python.org/3/library/logging.html#logging.currentframe).
-
-## 4. `apathetic_utils.Logger` Function Reference
-
-### Constructor
-
-```python
-Logger(
-    name: str,
-    level: int = logging.NOTSET,
-    *,
-    enable_color: bool | None = None
-)
-```
-
-Logger class for all Apathetic tools. Extends Python's standard `logging.Logger`.
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `name` | str | Logger name |
-| `level` | int | Initial log level (defaults to `logging.NOTSET`) |
-| `enable_color` | bool \| None | Whether to enable colorized output. If None, auto-detects based on TTY and environment variables. |
-
-### setLevel
-
-```python
-setLevel(level: int | str, *, minimum: bool | None = False) -> None
-```
-
-Set the logging level. Accepts both string names (case-insensitive) and numeric values.
-
-**Changed from stdlib:** Accepts string level names and has a `minimum` parameter.
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `level` | int \| str | Log level name or numeric value |
-| `minimum` | bool \| None | If True, only set the level if it's more verbose (lower numeric value) than the current level. Defaults to False. |
-
-**Example:**
-```python
-logger.setLevel("debug")
-logger.setLevel(logging.DEBUG)
-```
-
-### determineLogLevel
-
-```python
-determineLogLevel(
-    *,
-    args: argparse.Namespace | None = None,
-    root_log_level: str | None = None
-) -> str
+schema = schema_from_typeddict(Config)
+# Returns: {"name": str, "value": int}
 ```
-
-Resolve log level from CLI → env → root config → default.
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `args` | argparse.Namespace \| None | Parsed command-line arguments (checks for `args.log_level`) |
-| `root_log_level` | str \| None | Root logger level to use as fallback |
-
-**Returns:**
-- `str`: Resolved log level name (uppercase)
-
-**Example:**
-```python
-import argparse
-
-parser = argparse.ArgumentParser()
-parser.add_argument("--log-level", default="info")
-args = parser.parse_args()
-
-level = logger.determineLogLevel(args=args)
-logger.setLevel(level)
-```
-
-### determineColorEnabled
-
-```python
-determineColorEnabled() -> bool
-```
-
-Return True if colored output should be enabled. (classmethod)
-
-Checks:
-- `NO_COLOR` environment variable (disables colors)
-- `FORCE_COLOR` environment variable (enables colors)
-- TTY detection (enables colors if stdout is a TTY)
-
-**Returns:**
-- `bool`: True if colors should be enabled
-
-### extendLoggingModule
-
-```python
-extendLoggingModule() -> bool
-```
-
-Extend Python's logging module with TRACE and SILENT levels. (classmethod)
-
-This method:
-- Sets `apathetic_utils.Logger` as the default logger class
-- Adds `TRACE` and `SILENT` level names
-- Adds `logging.TRACE` and `logging.SILENT` constants
-
-**Returns:**
-- `bool`: True if the extension ran, False if it was already extended
-
-### trace
-
-```python
-trace(msg: str, *args: Any, **kwargs: Any) -> None
-```
-
-Log a message at TRACE level.
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `msg` | str | Message to log |
-| `*args` | Any | Format arguments |
-| `**kwargs` | Any | Additional keyword arguments (e.g., `exc_info`, `stacklevel`) |
-
-### detail
-
-```python
-detail(msg: str, *args: Any, **kwargs: Any) -> None
-```
-
-Log a message at DETAIL level.
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `msg` | str | Message to log |
-| `*args` | Any | Format arguments |
-| `**kwargs` | Any | Additional keyword arguments |
-
-### minimal
-
-```python
-minimal(msg: str, *args: Any, **kwargs: Any) -> None
-```
-
-Log a message at MINIMAL level.
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `msg` | str | Message to log |
-| `*args` | Any | Format arguments |
-| `**kwargs` | Any | Additional keyword arguments |
-
-### test
-
-```python
-test(msg: str, *args: Any, **kwargs: Any) -> None
-```
-
-Log a message at TEST level.
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `msg` | str | Message to log |
-| `*args` | Any | Format arguments |
-| `**kwargs` | Any | Additional keyword arguments |
-
-### errorIfNotDebug
-
-```python
-errorIfNotDebug(msg: str, *args: Any, **kwargs: Any) -> None
-```
-
-Log an error with full traceback only if debug/trace is enabled.
-
-If debug mode is enabled, shows full exception traceback. Otherwise, shows only the error message.
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `msg` | str | Error message |
-| `*args` | Any | Format arguments |
-| `**kwargs` | Any | Additional keyword arguments |
-
-**Example:**
-```python
-try:
-    risky_operation()
-except Exception:
-    logger.errorIfNotDebug("Operation failed")
-```
-
-### criticalIfNotDebug
-
-```python
-criticalIfNotDebug(msg: str, *args: Any, **kwargs: Any) -> None
-```
-
-Log a critical error with full traceback only if debug/trace is enabled.
-
-Similar to `errorIfNotDebug()` but logs at CRITICAL level.
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `msg` | str | Error message |
-| `*args` | Any | Format arguments |
-| `**kwargs` | Any | Additional keyword arguments |
-
-### colorize
-
-```python
-colorize(text: str, color: str, *, enable_color: bool | None = None) -> str
-```
-
-Apply ANSI color codes to text.
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `text` | str | Text to colorize |
-| `color` | str | ANSI color code (e.g., `ANSIColors.CYAN`, `ANSIColors.RED`) |
-| `enable_color` | bool \| None | Override color enablement. If None, uses instance setting. |
-
-**Returns:**
-- `str`: Colorized text (or original text if colors disabled)
-
-### logDynamic
-
-```python
-logDynamic(level: str | int, msg: str, *args: Any, **kwargs: Any) -> None
-```
-
-Log a message at a dynamically specified level.
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `level` | str \| int | Log level name or numeric value |
-| `msg` | str | Message to log |
-| `*args` | Any | Format arguments |
-| `**kwargs` | Any | Additional keyword arguments |
-
-**Example:**
-```python
-logger.logDynamic("warning", "This is a warning")
-logger.logDynamic(logging.ERROR, "This is an error")
-```
-
-### useLevel
-
-```python
-useLevel(level: str | int, *, minimum: bool = False) -> ContextManager
-```
-
-Context manager to temporarily change log level.
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `level` | str \| int | Log level to use |
-| `minimum` | bool | If True, only set the level if it's more verbose (lower numeric value) than the current level. Prevents downgrading from a more verbose level. |
-
-**Returns:**
-- Context manager that restores the previous level on exit
-
-**Example:**
-```python
-with logger.useLevel("debug"):
-    logger.debug("This will be shown")
-
-# Level is restored after the context
-```
-
-### levelName
-
-```python
-levelName: str
-```
-
-Return the explicit level name set on this logger (read-only property).
-
-This property returns the name of the level explicitly set on this logger.
-For the effective level name (what's actually used, considering inheritance),
-use `effectiveLevelName` instead.
-
-**Example:**
-```python
-logger.setLevel("debug")
-print(logger.levelName)  # "DEBUG"
-```
-
-### effectiveLevel
-
-```python
-effectiveLevel: int
-```
-
-Return the effective level (what's actually used) (read-only property).
-
-This property returns the effective logging level for this logger, considering
-inheritance from parent loggers. This is the preferred way to get the effective
-level. Also available via `getEffectiveLevel()` for stdlib compatibility.
-
-**Example:**
-```python
-parent = getLogger("parent")
-parent.setLevel("info")
-
-child = getLogger("parent.child")
-print(child.level)  # 0 (NOTSET - explicit)
-print(child.effectiveLevel)  # 20 (INFO - effective, from parent)
-```
-
-### effectiveLevelName
-
-```python
-effectiveLevelName: str
-```
-
-Return the effective level name (what's actually used) (read-only property).
-
-This property returns the name of the effective logging level for this logger,
-considering inheritance from parent loggers. This is the preferred way to get
-the effective level name. Also available via `getEffectiveLevelName()` for
-consistency.
-
-**Example:**
-```python
-parent = getLogger("parent")
-parent.setLevel("info")
-
-child = getLogger("parent.child")
-print(child.levelName)  # "NOTSET" (explicit)
-print(child.effectiveLevelName)  # "INFO" (effective, from parent)
-```
-
-### getLevel
-
-```python
-getLevel() -> int
-```
-
-Return the explicit level set on this logger.
-
-This method returns the level explicitly set on this logger (same as `level`
-property). For the effective level, use `getEffectiveLevel()` or the
-`effectiveLevel` property.
-
-**Returns:**
-- `int`: The explicit level value set on this logger
-
-**Example:**
-```python
-logger.setLevel("debug")
-print(logger.getLevel())  # 10
-```
-
-### getLevelName
-
-```python
-getLevelName() -> str
-```
-
-Return the explicit level name set on this logger.
-
-This method returns the name of the level explicitly set on this logger (same
-as `levelName` property). For the effective level name, use
-`getEffectiveLevelName()` or the `effectiveLevelName` property.
-
-**Returns:**
-- `str`: The explicit level name set on this logger
-
-**Example:**
-```python
-logger.setLevel("debug")
-print(logger.getLevelName())  # "DEBUG"
-```
-
-### getEffectiveLevelName
-
-```python
-getEffectiveLevelName() -> str
-```
-
-Return the effective level name (what's actually used).
-
-This method returns the name of the effective logging level for this logger,
-considering inheritance from parent loggers. Prefer the `effectiveLevelName` property
-for convenience, or use this method for consistency with `getEffectiveLevel()`.
-
-**Returns:**
-- `str`: The effective level name for this logger
-
-**Example:**
-```python
-parent = getLogger("parent")
-parent.setLevel("info")
-
-child = getLogger("parent.child")
-print(child.getEffectiveLevelName())  # "INFO" (from parent)
-```
-
-### getChildren
-
-```python
-getChildren() -> set[logging.Logger]
-```
-
-**Requires Python 3.12+**
-
-Return a set of loggers that are immediate children of this logger.
-
-This method returns only the direct children of the logger (loggers whose names are one level deeper in the hierarchy). For example, if you have loggers named `foo`, `foo.bar`, and `foo.bar.baz`, calling `getLogger("foo").getChildren()` will return a set containing only the `foo.bar` logger, not `foo.bar.baz`.
-
-**Returns:**
-- `set[logging.Logger]`: A set of Logger instances that are immediate children of this logger
-
-**Example:**
-```python
-from apathetic_utils import getLogger
-
-root = getLogger("")
-foo = getLogger("foo")
-bar = getLogger("foo.bar")
-baz = getLogger("foo.bar.baz")
-
-# Get immediate children of root logger
-children = root.getChildren()  # {foo logger}
-
-# Get immediate children of foo logger
-children = foo.getChildren()  # {bar logger}
-
-# Get immediate children of bar logger
-children = bar.getChildren()  # {baz logger}
-```
-
-For detailed documentation, see the [Python logging.Logger.getChildren() documentation](https://docs.python.org/3.12/library/logging.html#logging.Logger.getChildren).
-
-### ensureHandlers
-
-```python
-ensureHandlers() -> None
-```
-
-Ensure handlers are attached to this logger.
-
-DualStreamHandler is what will ensure logs go to the write channel.
-Rebuilds handlers if they're missing or if stdout/stderr have changed.
-
-### validateLevelPositive
-
-```python
-validateLevelPositive(level: int, *, level_name: str | None = None) -> None
-```
-
-Validate that a level value is positive (> 0). (staticmethod)
-
-Custom levels with values <= 0 will inherit from the root logger,
-causing NOTSET inheritance issues.
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `level` | int | The numeric level value to validate |
-| `level_name` | str \| None | Optional name for the level (for error messages). If None, will attempt to get from getLevelName() |
-
-**Raises:**
-- `ValueError`: If level <= 0
-
-**Example:**
-```python
-Logger.validateLevelPositive(5, level_name="TRACE")
-Logger.validateLevelPositive(0, level_name="TEST")
-# ValueError: Level 'TEST' has value 0...
-```
-
-### _log
-
-```python
-_log(level: int, msg: str, args: tuple[Any, ...], **kwargs: Any) -> None
-```
-
-Log a message with the specified level.
-
-**Changed from stdlib:** Automatically ensures handlers are attached via `ensureHandlers()`.
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `level` | int | The numeric logging level |
-| `msg` | str | The message format string |
-| `args` | tuple[Any, ...] | Arguments for the message format string |
-| `**kwargs` | Any | Additional keyword arguments passed to the base implementation |
-
-### addLevelName
-
-```python
-addLevelName(level: int, level_name: str) -> None
-```
-
-Associate a level name with a numeric level. (staticmethod)
-
-**Changed from stdlib:** Validates that level value is positive (> 0) to prevent NOTSET
-inheritance issues. Sets `logging.<LEVEL_NAME>` attribute for convenience.
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `level` | int | The numeric level value (must be > 0 for custom levels) |
-| `level_name` | str | The name to associate with this level |
-
-**Raises:**
-- `ValueError`: If level <= 0 (which would cause NOTSET inheritance)
-- `ValueError`: If `logging.<LEVEL_NAME>` already exists with an invalid value
-
-## Classes
-
-### TagFormatter
-
-Custom formatter that adds colored tags to log messages.
-
-#### Constructor
-
-```python
-TagFormatter(format: str)
-```
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `format` | str | Format string (typically `"%(message)s"`) |
-
-The formatter automatically adds tags based on log level:
-- `TRACE` → `[TRACE]` (gray)
-- `DEBUG` → `[DEBUG]` (cyan)
-- `WARNING` → `⚠️`
-- `ERROR` → `❌`
-- `CRITICAL` → `💥`
-
-### DualStreamHandler
-
-Stream handler that routes messages to stdout or stderr based on log level.
-
-- **stdout**: Used for INFO messages
-- **stderr**: Used for TRACE, DEBUG, WARNING, ERROR, and CRITICAL messages
-
-#### Constructor
-
-```python
-DualStreamHandler()
-```
-
-#### Properties
-
-##### `enable_color: bool`
-
-Whether to enable colorized output for this handler.
 
 ## Constants
 
-### Log Levels
+### CI_ENV_VARS
 
-- `TRACE_LEVEL` — Numeric value for TRACE level (`logging.DEBUG - 5`)
-- `SILENT_LEVEL` — Numeric value for SILENT level (`logging.CRITICAL + 1`)
-- `LEVEL_ORDER` — List of all log level names in order: `["trace", "debug", "info", "warning", "error", "critical", "silent"]`
+```python
+CI_ENV_VARS: tuple[str, ...]
+```
 
-### ANSI Colors
+Tuple of CI environment variable names that indicate a CI environment.
 
-Access via `ANSIColors` class:
-
-- `ANSIColors.RESET` — ANSI reset code (`\033[0m`)
-- `ANSIColors.CYAN` — Cyan color (`\033[36m`)
-- `ANSIColors.YELLOW` — Yellow color (`\033[93m`)
-- `ANSIColors.RED` — Red color (`\033[91m`)
-- `ANSIColors.GREEN` — Green color (`\033[92m`)
-- `ANSIColors.GRAY` — Gray color (`\033[90m`)
+Default values:
+- `"CI"`
+- `"GITHUB_ACTIONS"`
+- `"GIT_TAG"`
+- `"GITHUB_REF"`
 
 **Example:**
 ```python
-from apathetic_utils import ANSIColors
+from apathetic_utils import CI_ENV_VARS
 
-message = f"{ANSIColors.CYAN}Colored text{ANSIColors.RESET}"
+print(CI_ENV_VARS)  # ("CI", "GITHUB_ACTIONS", "GIT_TAG", "GITHUB_REF")
 ```
 
-### Tag Styles
+## Namespace Class
 
-- `TAG_STYLES` — Dictionary mapping level names to (color, tag_text) tuples
-
-### Defaults
-
-- `DEFAULT_APATHETIC_LOG_LEVEL` — Default log level string (`"info"`)
-- `DEFAULT_APATHETIC_LOG_LEVEL_ENV_VARS` — Default environment variable names (`["LOG_LEVEL"]`)
-
-## Testing Utilities
-
-### safeTrace(label: str, *args: Any, icon: str = "🧵") -> None
-
-Debug tracing function for test development. Only active when `safeTrace` environment variable is set.
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `label` | str | Trace label |
-| `*args` | Any | Additional arguments to trace |
-| `icon` | str | Icon to use (default: `"🧵"`) |
-
-### makeSafeTrace(icon: str = "🧵") -> Callable
-
-Create a test trace function with a custom icon.
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `icon` | str | Icon to use |
-
-**Returns:**
-- `Callable`: Test trace function
-
-### safeTrace_ENABLED: bool
-
-Boolean flag indicating if test tracing is enabled (checks `safeTrace` environment variable).
-
-## Compatibility Mode
-
-This library provides two modes of operation:
-
-### Default Mode (Improved Behavior)
-
-When compatibility mode is **disabled** (`compat_mode=False`, the default), the library provides improved behavior with enhancements over the standard library:
-
-- **Auto-inference:** `getLogger(None)` auto-infers the logger name from the calling module's `__package__` attribute, making it easier to use the logger without explicitly registering a name.
-- **Enhanced features:** Additional improvements and quality-of-life enhancements.
-
-### Compatibility Mode (Standard Library Compatible)
-
-When compatibility mode is **enabled** (`compat_mode=True`), the library maintains standard library compatible behavior with **no breaking changes**:
-
-- **Stdlib behavior:** `getLogger(None)` returns the root logger (matching standard library behavior).
-- **Full compatibility:** All behavior matches the Python standard library `logging` module.
-
-### Enabling Compatibility Mode
-
-To enable compatibility mode for stdlib-compatible behavior:
+All utilities are also available through the `apathetic_utils` namespace class:
 
 ```python
-from apathetic_utils import registerCompatibilityMode
+from apathetic_utils import apathetic_utils
 
-registerCompatibilityMode(compat_mode=True)
-# Now getLogger(None) returns root logger (stdlib behavior)
+# Use via namespace
+config = apathetic_utils.load_jsonc(Path("config.jsonc"))
+is_ci = apathetic_utils.is_ci()
+mode = apathetic_utils.detect_runtime_mode("my_package")
 ```
 
-You can also set it when registering a logger:
-
-```python
-from apathetic_utils import registerLogger
-
-registerLogger("my_app", compat_mode=True)
-```
-
-### Behavior Differences
-
-**`getLogger(None)` behavior:**
-
-- **Default mode (`compat_mode=False`):** Auto-infers logger name from calling module (improved behavior)
-- **Compatibility mode (`compat_mode=True`):** Returns root logger (stdlib behavior)
-
-**To get root logger in default mode:**
-
-```python
-logger = getLogger("")  # Returns root logger (works in both modes)
-```
-
-See [`registerCompatibilityMode()`](#registercompatibilitymode) for more details.
+This is useful when embedding the library as a single-file script to minimize global namespace pollution.

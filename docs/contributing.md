@@ -6,7 +6,7 @@ permalink: /contributing/
 
 # Contributing Guide
 
-Thanks for your interest in contributing to **Apathetic Python Utils** — a minimal wrapper for the Python standard library logger.  
+Thanks for your interest in contributing to **Apathetic Python Utils** — a collection of utility functions for Apathetic Tools projects.  
 This guide explains how to set up your environment, run checks, and safely contribute code.
 
 ## Supported Python Versions
@@ -382,8 +382,8 @@ Changes should maintain compatibility with the broader Apathetic Tools ecosystem
 
 ## Getting Help
 
-- 📘 [Roadmap](https://github.com/apathetic-tools/python-logs/blob/main/ROADMAP.md)
-- 🐛 [Issue Tracker](https://github.com/apathetic-tools/python-logs/issues)
+- 📘 [Roadmap](https://github.com/apathetic-tools/python-utils/blob/main/ROADMAP.md)
+- 🐛 [Issue Tracker](https://github.com/apathetic-tools/python-utils/issues)
 - 💬 [Discord](https://discord.gg/PW6GahZ7)
 
 **Thank you for helping keep Apathetic Python Utils minimal, dependency-free, and delightful.**
