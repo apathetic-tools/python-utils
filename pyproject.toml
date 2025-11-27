@@ -339,6 +339,7 @@ changelog_file = "RELEASES.md"
 changelog_encoding = "utf-8"
 commit_author = "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
 commit_message = "chore: release v{version} [skip ci]"
+allow_zero_version = true  # Required for major_on_zero to work (defaults to false in v10.0.0+)
 major_on_zero = false
 upload_to_pypi = false  # We handle PyPI publishing in GitHub Actions
 upload_to_release = true
