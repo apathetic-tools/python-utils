@@ -14,14 +14,14 @@ files = [
 
 [[package]]
 name = "apathetic-logging"
-version = "0.2.3"
+version = "0.3.2"
 description = "Small quality-of-life features on top of stdlib."
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "apathetic_logging-0.2.3-py3-none-any.whl", hash = "sha256:70d98ada004b1ad8730732faeb254b75dd0611b20ba9cfb70574561e79b96290"},
-    {file = "apathetic_logging-0.2.3.tar.gz", hash = "sha256:ab43f29269003afa605fcbbe3c011ec9dcb24a0e24c487208411da65f23b6f84"},
+    {file = "apathetic_logging-0.3.2-py3-none-any.whl", hash = "sha256:40b75fe2b6c44f3bacfcf0b7812daf5eb092ff49e836dcc4b00584061ffade52"},
+    {file = "apathetic_logging-0.3.2.tar.gz", hash = "sha256:c22a853d4f801a3316cacf446cc817e3f1fe1d8d713a92c19c574734df3b4210"},
 ]
 
 [[package]]
@@ -1718,4 +1718,4 @@ dev = ["pytest", "setuptools"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10"
-content-hash = "9c6ac5b4839a9af6095a0307a39257a24f7b57be69866e493f6c451f408e944f"
+content-hash = "a3e484ab04162ea88679e3318a63e0c98c49ba08fb2a5b0f4a570edd2bfc0647"

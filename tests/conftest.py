@@ -11,14 +11,10 @@ Switch mode with: RUNTIME_MODE=singlefile pytest or RUNTIME_MODE=zipapp pytest
 
 import logging
 import os
+import sys
 from collections.abc import Generator
 
 import pytest
-from apathetic_logging import (
-    Logger,
-    makeSafeTrace,
-    removeLogger,
-)
 
 import apathetic_utils
 from tests.utils.constants import (
@@ -29,14 +25,49 @@ from tests.utils.constants import (
 )
 
 
-safeTrace = makeSafeTrace("⚡️")
-
-# early jank hook
+# early jank hook - must run before importing apathetic_logging
+# so we get the stitched version if in singlefile/zipapp mode
 apathetic_utils.runtime_swap(
     PROJ_ROOT,
     PROGRAM_PACKAGE,
     PROGRAM_SCRIPT,
     BUNDLER_SCRIPT,
+)
+
+# Import apathetic_logging AFTER runtime_swap so we get the correct version
+# In stitched builds, apathetic_logging is registered in sys.modules
+# by the stitched file. In installed mode, we import it normally.
+if "apathetic_logging" in sys.modules:
+    # Use the version from sys.modules (could be stitched or installed)
+    import apathetic_logging as mod_logging
+
+    mod_logging_source = getattr(
+        sys.modules["apathetic_logging"], "__file__", "unknown"
+    )
+    was_in_sys_modules = True
+else:
+    # Not in sys.modules yet, import normally
+    import apathetic_logging as mod_logging
+
+    mod_logging_source = getattr(mod_logging, "__file__", "unknown")
+    was_in_sys_modules = False
+
+safeTrace = mod_logging.makeSafeTrace("⚡️")
+
+# Debug: show which apathetic_logging module we're using
+if was_in_sys_modules:
+    safeTrace(
+        f"🔍 conftest: Using apathetic_logging from sys.modules: {mod_logging_source}"
+    )
+else:
+    safeTrace(f"🔍 conftest: Imported apathetic_logging normally: {mod_logging_source}")
+
+# Register a logger name so getLogger() returns a named logger (not root)
+# This ensures getLogger() returns a Logger instance with trace method
+mod_logging.registerLogger(PROGRAM_PACKAGE)
+safeTrace(
+    f"🔍 conftest: Registered logger '{PROGRAM_PACKAGE}' "
+    f"using apathetic_logging from: {mod_logging_source}"
 )
 
 
@@ -53,22 +84,22 @@ def reset_logger_class() -> Generator[None, None, None]:
     # Clear any existing loggers
     logger_names = list(logging.Logger.manager.loggerDict.keys())
     for logger_name in logger_names:
-        removeLogger(logger_name)
+        mod_logging.removeLogger(logger_name)
 
     # Reset to defaults before test
-    logging.setLoggerClass(Logger)
-    Logger.extendLoggingModule()
+    logging.setLoggerClass(mod_logging.Logger)
+    mod_logging.Logger.extendLoggingModule()
 
     yield
 
     # Clear loggers again after test
     logger_names = list(logging.Logger.manager.loggerDict.keys())
     for logger_name in logger_names:
-        removeLogger(logger_name)
+        mod_logging.removeLogger(logger_name)
 
     # Restore original state after test
     logging.setLoggerClass(original_logger_class)
-    Logger.extendLoggingModule()
+    mod_logging.Logger.extendLoggingModule()
 
 
 # ----------------------------------------------------------------------

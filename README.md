@@ -7,7 +7,7 @@
 📘 **[Roadmap](./ROADMAP.md)** · 📝 **[Release Notes](https://github.com/apathetic-tools/python-utils/releases)**
 
 **Grab bag of helpers for Apathetic projects.**  
-*When stdlib isn't enough.*
+*When stdlib just isn't enough.*
 
 *Apathetic Python Utils* provides a lightweight, dependency-free collection of utility functions designed for CLI tools. It includes helpers for file loading, path manipulation, system detection, text processing, type checking, pattern matching, and more.
 

@@ -145,16 +145,77 @@ class ApatheticUtils_Internal_Modules:  # noqa: N801  # pyright: ignore[reportUn
         detected: set[str] = set()
         parent_dirs: list[Path] = []
         seen_parents: set[Path] = set()
+        # Track which packages were detected via source_bases
+        # (for namespace package detection)
+        detected_via_source_bases: set[str] = set()
 
         # Detect packages from files
         for file_path in file_paths:
+            file_path_resolved = file_path.resolve()
             pkg_root = ApatheticUtils_Internal_Modules._find_package_root_for_file(
                 file_path, source_bases=source_bases
             )
             if pkg_root:
+                # Check if this package was detected via source_bases
+                # (by checking if file is under any source_base and no __init__.py)
+                detected_via_sb = False
+                if source_bases:
+                    # Check if file is under a source_base
+                    for base_str in source_bases:
+                        base_path = Path(base_str).resolve()
+                        try:
+                            rel_path = file_path_resolved.relative_to(base_path)
+                            # If file is in a subdirectory of base, check __init__.py
+                            if (
+                                len(rel_path.parts) > 1
+                                and not (pkg_root / "__init__.py").exists()
+                            ):
+                                # No __init__.py, so detected via source_bases
+                                detected_via_sb = True
+                                break
+                        except ValueError:
+                            continue
+
                 # Extract package name from directory name
                 pkg_name = pkg_root.name
                 detected.add(pkg_name)
+                if detected_via_sb:
+                    detected_via_source_bases.add(pkg_name)
+
+                # For source_bases, also detect nested packages (all directory levels)
+                if detected_via_sb and source_bases:
+                    # Find which base this file is under
+                    for base_str in source_bases:
+                        base_path = Path(base_str).resolve()
+                        try:
+                            rel_path = file_path_resolved.relative_to(base_path)
+                            # Detect all directory levels between base and file
+                            # (excluding the file itself and the base)
+                            # More than base + first level + file
+                            MIN_NESTED_PARTS = 3
+                            if len(rel_path.parts) >= MIN_NESTED_PARTS:
+                                # Walk from base to file, detecting intermediate dirs
+                                current = base_path
+                                for part in rel_path.parts[:-1]:  # Exclude filename
+                                    current = current / part
+                                    if current.is_dir() and current != pkg_root:
+                                        nested_pkg_name = current.name
+                                        if (
+                                            nested_pkg_name
+                                            and nested_pkg_name != package_name
+                                        ):
+                                            detected.add(nested_pkg_name)
+                                            detected_via_source_bases.add(
+                                                nested_pkg_name
+                                            )
+                                            logger.trace(
+                                                "[PKG_DETECT] Detected nested package "
+                                                "%s from %s",
+                                                nested_pkg_name,
+                                                file_path,
+                                            )
+                        except ValueError:
+                            continue
 
                 # Extract parent directory (module base)
                 parent_dir = pkg_root.parent.resolve()
@@ -165,14 +226,16 @@ class ApatheticUtils_Internal_Modules:  # noqa: N801  # pyright: ignore[reportUn
                     parent_dirs.append(parent_dir)
 
                 logger.trace(
-                    "[PKG_DETECT] Detected package %s from %s (root: %s, parent: %s)",
+                    "[PKG_DETECT] Detected package %s from %s "
+                    "(root: %s, parent: %s, via_sb=%s)",
                     pkg_name,
                     file_path,
                     pkg_root,
                     parent_dir,
+                    detected_via_sb,
                 )
 
-        # Also detect directories in source_bases as packages if they contain
+        # Also detect directories as namespace packages if they contain
         # subdirectories that are packages (namespace packages)
         # This must happen BEFORE adding package_name to detected, so we can check
         # if base_name == package_name correctly
@@ -195,61 +258,72 @@ class ApatheticUtils_Internal_Modules:  # noqa: N801  # pyright: ignore[reportUn
                     # No common root, use first file's parent
                     common_root = file_paths[0].parent
                     break
+
+        # Build set of source_bases paths for quick lookup
+        source_bases_paths: set[Path] = set()
         if source_bases:
             for base_str in source_bases:
                 base_path = Path(base_str).resolve()
-                if not base_path.exists() or not base_path.is_dir():
-                    continue
-                # Check if this base contains any detected packages as direct children
-                base_name = base_path.name
-                # Skip if base is filesystem root, empty name, already detected,
-                # is package_name, or is the common root of all files
-                if (
-                    not base_name
-                    or base_name in detected
-                    or base_name == package_name
-                    or base_path == base_path.parent  # filesystem root
-                    or (common_root and base_path == common_root.resolve())
-                ):
-                    logger.trace(
-                        "[PKG_DETECT] Skipping base %s: name=%s, in_detected=%s, "
-                        "is_package_name=%s, is_common_root=%s",
-                        base_path,
-                        base_name,
-                        base_name in detected,
-                        base_name == package_name,
-                        common_root and base_path == common_root.resolve(),
-                    )
-                    continue
-                # Check if any detected package has this base as its parent
-                for file_path in file_paths:
-                    pkg_root = (
-                        ApatheticUtils_Internal_Modules._find_package_root_for_file(
-                            file_path, source_bases=source_bases
-                        )
-                    )
-                    if pkg_root:
-                        pkg_parent = pkg_root.parent.resolve()
+                if base_path.exists() and base_path.is_dir():
+                    source_bases_paths.add(base_path)
+
+        # Check all detected packages' parent directories to see if they should
+        # be detected as namespace packages
+        # Only detect namespace packages when using source_bases
+        if source_bases:
+            checked_parents: set[Path] = set()
+            for file_path in file_paths:
+                file_path_resolved = file_path.resolve()
+                pkg_root = ApatheticUtils_Internal_Modules._find_package_root_for_file(
+                    file_path, source_bases=source_bases
+                )
+                if pkg_root:
+                    pkg_name = pkg_root.name
+                    # Only check parents if this package was detected via source_bases
+                    if pkg_name not in detected_via_source_bases:
+                        continue
+
+                    pkg_parent = pkg_root.parent.resolve()
+                    # Skip if we've already checked this parent
+                    if pkg_parent in checked_parents:
+                        continue
+                    checked_parents.add(pkg_parent)
+
+                    # Skip if parent is filesystem root
+                    if pkg_parent == pkg_parent.parent:
+                        continue
+
+                    parent_name = pkg_parent.name
+                    # Skip if empty name, already detected, is package_name,
+                    # is the common root, or is in source_bases
+                    if (
+                        not parent_name
+                        or parent_name in detected
+                        or parent_name == package_name
+                        or (common_root and pkg_parent == common_root.resolve())
+                        or pkg_parent in source_bases_paths
+                    ):
                         logger.trace(
-                            "[PKG_DETECT] Checking base: %s (base_path=%s), "
-                            "pkg_root=%s, pkg_parent=%s, match=%s",
-                            base_name,
-                            base_path,
-                            pkg_root,
+                            "[PKG_DETECT] Skipping parent %s: name=%s, in_detected=%s, "
+                            "is_package_name=%s, is_common_root=%s, in_source_bases=%s",
                             pkg_parent,
-                            pkg_parent == base_path,
+                            parent_name,
+                            parent_name in detected,
+                            parent_name == package_name,
+                            common_root and pkg_parent == common_root.resolve(),
+                            pkg_parent in source_bases_paths,
                         )
-                        if pkg_parent == base_path:
-                            # This base contains a detected package,
-                            # so it's also a package
-                            detected.add(base_name)
-                            logger.trace(
-                                "[PKG_DETECT] Detected base directory as package: %s "
-                                "(contains package: %s)",
-                                base_name,
-                                pkg_root.name,
-                            )
-                            break
+                        continue
+
+                    # This parent contains a detected package, so it's also a package
+                    detected.add(parent_name)
+                    detected_via_source_bases.add(parent_name)
+                    logger.trace(
+                        "[PKG_DETECT] Detected parent directory as namespace package: "
+                        "%s (contains package: %s)",
+                        parent_name,
+                        pkg_root.name,
+                    )
 
         # Always include configured package (for fallback and multi-package scenarios)
         detected.add(package_name)

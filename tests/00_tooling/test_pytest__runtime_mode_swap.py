@@ -22,8 +22,8 @@ import pkgutil
 import sys
 from pathlib import Path
 
+import apathetic_logging as mod_logging
 import pytest
-from apathetic_logging import makeSafeTrace
 
 import apathetic_utils.runtime as amod_utils_runtime
 from tests.utils import PROGRAM_PACKAGE, PROGRAM_SCRIPT, PROJ_ROOT
@@ -37,7 +37,11 @@ _runtime = amod_utils_runtime.ApatheticUtils_Internal_Runtime
 # Helpers
 # ---------------------------------------------------------------------------
 
-safeTrace = makeSafeTrace("🪞")
+safeTrace = mod_logging.makeSafeTrace("🪞")
+
+# Debug: show which apathetic_logging module we're using in the test
+mod_logging_source = getattr(mod_logging, "__file__", "unknown")
+safeTrace(f"🔍 test: Using apathetic_logging from: {mod_logging_source}")
 
 SRC_ROOT = PROJ_ROOT / "src"
 DIST_ROOT = PROJ_ROOT / "dist"
