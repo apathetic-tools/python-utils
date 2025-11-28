@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v0.2.1 (2025-11-28)
+
+### Bug Fixes
+
+- **tests**: Fix logging registration in stitched builds
+  ([`4048bfc`](https://github.com/apathetic-tools/python-utils/commit/4048bfcf1e64d22bd61e507339465caa8f1d298e))
+
+### Refactoring
+
+- **tests**: Simplify test utilities and remove unused modules
+  ([`b7dc2a9`](https://github.com/apathetic-tools/python-utils/commit/b7dc2a996210fac1dbfeb9fd8e0acbe70c613b2c))
+
+
 ## v0.2.0 (2025-11-28)
 
 ### Bug Fixes
