@@ -608,3 +608,103 @@ def test_detect_packages_from_files_mixed_init_and_source_bases() -> None:
         assert len(detected) == 3  # noqa: PLR2004
         # Should have two parent directories
         assert len(parent_dirs) == 2  # noqa: PLR2004
+
+
+def test_detect_packages_from_files_handles_mixed_packages_and_loose_files() -> None:
+    """Test handling mix of package files and loose files."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        # Package file
+        pkg_dir = tmp_path / "mypkg"
+        pkg_dir.mkdir()
+        (pkg_dir / "__init__.py").write_text("")
+        pkg_file = pkg_dir / "module.py"
+        pkg_file.write_text("")
+
+        # Loose file (no __init__.py, not under source_bases)
+        loose_dir = tmp_path / "loose"
+        loose_dir.mkdir()
+        loose_file = loose_dir / "script.py"
+        loose_file.write_text("")
+
+        # --- execute ---
+        detected, _parent_dirs = _modules.detect_packages_from_files(
+            file_paths=[pkg_file, loose_file],
+            package_name="default",
+        )
+
+        # --- verify ---
+        # Should detect "mypkg" and include "default" as fallback
+        assert "mypkg" in detected
+        assert "default" in detected
+        assert len(detected) == 2  # noqa: PLR2004
+
+
+def test_detect_packages_from_files_deterministic_output_order() -> None:
+    """Test that function produces deterministic results (for build reproducibility)."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        pkg1_dir = tmp_path / "pkg1"
+        pkg1_dir.mkdir()
+        (pkg1_dir / "__init__.py").write_text("")
+        file1 = pkg1_dir / "module1.py"
+        file1.write_text("")
+
+        pkg2_dir = tmp_path / "pkg2"
+        pkg2_dir.mkdir()
+        (pkg2_dir / "__init__.py").write_text("")
+        file2 = pkg2_dir / "module2.py"
+        file2.write_text("")
+
+        # --- execute ---
+        # Call multiple times with different file order
+        result1, _parent_dirs1 = _modules.detect_packages_from_files(
+            file_paths=[file1, file2],
+            package_name="default",
+        )
+        result2, _parent_dirs2 = _modules.detect_packages_from_files(
+            file_paths=[file2, file1],
+            package_name="default",
+        )
+
+        # --- verify ---
+        # Results should be identical (sets are unordered, but contents same)
+        assert result1 == result2
+        assert sorted(result1) == sorted(result2)
+
+
+def test_detect_packages_from_files_source_bases_only_applies_to_files_under_base() -> (
+    None
+):
+    """Test that source_bases only applies to files under the base, not elsewhere."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        # File under source_bases (should use source_bases logic)
+        pkg1_dir = src_dir / "pkg1"
+        pkg1_dir.mkdir()
+        file1 = pkg1_dir / "module1.py"
+        file1.write_text("")
+
+        # File outside source_bases (should require __init__.py)
+        other_dir = tmp_path / "other"
+        other_dir.mkdir()
+        pkg2_dir = other_dir / "pkg2"
+        pkg2_dir.mkdir()
+        # No __init__.py, so should not be detected
+        file2 = pkg2_dir / "module2.py"
+        file2.write_text("")
+
+        # --- execute ---
+        detected, _parent_dirs = _modules.detect_packages_from_files(
+            file_paths=[file1, file2],
+            package_name="default",
+            source_bases=[str(src_dir)],
+        )
+
+        # --- verify ---
+        # Should detect "pkg1" via source_bases, but not "pkg2" (outside base)
+        assert "pkg1" in detected
+        assert "pkg2" not in detected
+        assert "default" in detected
