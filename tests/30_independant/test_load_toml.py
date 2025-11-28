@@ -3,6 +3,7 @@
 
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -58,6 +59,56 @@ def test_load_toml_invalid_syntax() -> None:
         path.unlink()
 
 
-# Note: Tests for missing tomli on Python 3.10 are complex to mock reliably.
-# These would require mocking sys.modules or __import__, which is fragile.
-# The functionality is tested indirectly through resolve_build_config tests.
+def test_load_toml_missing_tomli_required_false(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """load_toml() should return None when tomli is missing and required=False."""
+    # This test ensures lines 136-153 (error handling for missing tomli)
+    # are covered
+    # --- setup ---
+    toml_file = tmp_path / "test.toml"
+    toml_file.write_text('[project]\nname = "test"')
+
+    # Mock both tomllib and tomli to raise ImportError (simulating Python
+    # 3.10 without tomli)
+    def mock_import(name: str, *args: object, **kwargs: object) -> Any:
+        if name in ("tomllib", "tomli"):
+            msg = f"No module named '{name}'"
+            raise ImportError(msg)
+        # Use real import for other modules
+        return __import__(name, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr("builtins.__import__", mock_import)
+
+    # --- execute ---
+    # With required=False, should return None when tomli is missing
+    result = mod_autils.load_toml(toml_file, required=False)
+
+    # --- verify ---
+    # Should return None (line 153)
+    assert result is None
+
+
+def test_load_toml_missing_tomli_required_true(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """load_toml() should raise RuntimeError when tomli is missing and required=True."""
+    # This test ensures lines 145-152 (RuntimeError when required=True)
+    # are covered
+    # --- setup ---
+    toml_file = tmp_path / "test.toml"
+    toml_file.write_text('[project]\nname = "test"')
+
+    # Mock both tomllib and tomli to raise ImportError
+    def mock_import(name: str, *args: object, **kwargs: object) -> Any:
+        if name in ("tomllib", "tomli"):
+            msg = f"No module named '{name}'"
+            raise ImportError(msg)
+        return __import__(name, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr("builtins.__import__", mock_import)
+
+    # --- execute and verify ---
+    # With required=True, should raise RuntimeError (lines 145-152)
+    with pytest.raises(RuntimeError, match="TOML parsing requires 'tomli' package"):
+        mod_autils.load_toml(toml_file, required=True)

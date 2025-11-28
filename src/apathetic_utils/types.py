@@ -132,15 +132,17 @@ class ApatheticUtils_Internal_Types:  # noqa: N801  # pyright: ignore[reportUnus
         if origin is tuple and isinstance(value, tuple):
             subtypes = args
             tup = ApatheticUtils_Internal_Types.cast_hint(tuple[Any, ...], value)
-            if len(subtypes) == len(tup):
-                return all(
-                    ApatheticUtils_Internal_Types.safe_isinstance(v, t)
-                    for v, t in zip(tup, subtypes, strict=False)
-                )
+            # Check for Ellipsis first (tuple[str, ...])
             if len(subtypes) == 2 and subtypes[1] is Ellipsis:  # noqa: PLR2004
                 return all(
                     ApatheticUtils_Internal_Types.safe_isinstance(v, subtypes[0])
                     for v in tup
+                )
+            # Fixed-length tuples (tuple[str, int])
+            if len(subtypes) == len(tup):
+                return all(
+                    ApatheticUtils_Internal_Types.safe_isinstance(v, t)
+                    for v, t in zip(tup, subtypes, strict=False)
                 )
             return False
 

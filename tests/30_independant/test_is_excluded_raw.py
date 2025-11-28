@@ -478,3 +478,147 @@ def test_is_excluded_raw_relative_pattern_outside_root_specific_file(
 
     # --- execute + verify ---
     assert mod_autils.is_excluded_raw(outside_file, [pattern], root)
+
+
+def test_is_excluded_raw_no_exclude_patterns(tmp_path: Path) -> None:
+    """is_excluded_raw() should return False when no exclude patterns provided."""
+    # --- setup ---
+    root = tmp_path
+    file = root / "file.txt"
+    file.touch()
+
+    # --- execute + verify ---
+    assert not mod_autils.is_excluded_raw(file, [], root)
+
+
+def test_is_excluded_raw_nonexistent_root(tmp_path: Path) -> None:
+    """is_excluded_raw() should handle nonexistent root gracefully."""
+    # --- setup ---
+    root = tmp_path / "nonexistent"
+    file = tmp_path / "file.txt"
+    file.touch()
+
+    # --- execute + verify ---
+    # Should not crash, should return False for non-**/ patterns
+    assert not mod_autils.is_excluded_raw(file, ["*.txt"], root)
+    # **/ patterns should still work
+    assert mod_autils.is_excluded_raw(file, ["**/file.txt"], root)
+
+
+def test_is_excluded_raw_directory_only_pattern(tmp_path: Path) -> None:
+    """is_excluded_raw() should match directory-only patterns ending with '/'."""
+    # --- setup ---
+    root = tmp_path
+    file = root / "dir" / "file.txt"
+    file.parent.mkdir()
+    file.touch()
+
+    # --- execute + verify ---
+    # Pattern ending with / should match files in that directory
+    assert mod_autils.is_excluded_raw(file, ["dir/"], root)
+    assert not mod_autils.is_excluded_raw(file, ["other/"], root)
+
+
+def test_is_excluded_raw_absolute_pattern_under_root(tmp_path: Path) -> None:
+    """is_excluded_raw() should handle absolute patterns under root."""
+    # --- setup ---
+    root = tmp_path
+    file = root / "subdir" / "file.txt"
+    file.parent.mkdir()
+    file.touch()
+
+    # Absolute pattern that's under root should be converted to relative
+    abs_pattern = str(root / "subdir" / "*.txt")
+
+    # --- execute + verify ---
+    assert mod_autils.is_excluded_raw(file, [abs_pattern], root)
+
+
+def test_is_excluded_raw_invalid_pattern_resolution(tmp_path: Path) -> None:
+    """is_excluded_raw() should handle invalid pattern resolution gracefully."""
+    # --- setup ---
+    root = tmp_path / "config"
+    root.mkdir()
+    file = tmp_path / "file.txt"
+    file.touch()
+
+    # Pattern that would resolve to invalid path (too many ../)
+    pattern = "../../../../../../invalid"
+
+    # --- execute + verify ---
+    # Should not crash, should return False
+    # This tests lines 274-276: exception handling for invalid pattern resolution
+    assert not mod_autils.is_excluded_raw(file, [pattern], root)
+
+
+def test_is_excluded_raw_pattern_with_glob_chars_and_dotdot(tmp_path: Path) -> None:
+    """is_excluded_raw() should handle patterns with glob chars and ../ (line 257)."""
+    # This test ensures line 257 (pattern resolution for patterns with glob
+    # chars and ../) is covered
+    # --- setup ---
+    root = tmp_path / "config_dir"
+    root.mkdir()
+    outside_file = tmp_path / "src" / "pkg" / "test_file.py"
+    outside_file.parent.mkdir(parents=True)
+    outside_file.touch()
+
+    # Pattern with ../ and glob chars (line 235-257)
+    pattern = "../src/**/test_*.py"
+
+    # --- execute + verify ---
+    # Should resolve pattern and match
+    assert mod_autils.is_excluded_raw(outside_file, [pattern], root)
+    # Non-matching file should not match
+    other_file = tmp_path / "src" / "pkg" / "other_file.py"
+    other_file.touch()
+    assert not mod_autils.is_excluded_raw(other_file, [pattern], root)
+
+
+def test_is_excluded_raw_absolute_pattern_under_root_edge_case(tmp_path: Path) -> None:
+    """is_excluded_raw() should handle absolute patterns under root (lines 291-292)."""
+    # This test ensures lines 291-292 (pattern adjustment for absolute
+    # patterns) are covered
+    # --- setup ---
+    root = tmp_path
+    file = root / "subdir" / "file.txt"
+    file.parent.mkdir()
+    file.touch()
+
+    # Absolute pattern that's under root but might cause ValueError
+    # Test the ValueError handling in lines 291-292
+    abs_pattern = str(root / "subdir" / "*.txt")
+
+    # --- execute + verify ---
+    # Should convert absolute pattern to relative and match
+    assert mod_autils.is_excluded_raw(file, [abs_pattern], root)
+
+    # Test with pattern that's not under root (should hit ValueError path)
+    other_root = tmp_path / "other"
+    other_root.mkdir()
+    other_pattern = str(other_root / "*.txt")
+    # Should not match (pattern not under root, hits ValueError, uses pattern as-is)
+    assert not mod_autils.is_excluded_raw(file, [other_pattern], root)
+
+
+def test_is_excluded_raw_directory_only_pattern_edge_case(tmp_path: Path) -> None:
+    """is_excluded_raw() should match directory-only patterns (lines 304-305)."""
+    # This test ensures lines 304-305 (directory-only pattern matching) are covered
+    # --- setup ---
+    root = tmp_path
+    file = root / "dir" / "subdir" / "file.txt"
+    file.parent.mkdir(parents=True)
+    file.touch()
+
+    # --- execute + verify ---
+    # Pattern ending with / should match files in that directory (line 304-305)
+    assert mod_autils.is_excluded_raw(file, ["dir/"], root)
+    # Should also match nested files
+    nested_file = root / "dir" / "subdir" / "nested" / "file.txt"
+    nested_file.parent.mkdir(parents=True)
+    nested_file.touch()
+    assert mod_autils.is_excluded_raw(nested_file, ["dir/"], root)
+    # Non-matching directory should not match
+    other_file = root / "other" / "file.txt"
+    other_file.parent.mkdir()
+    other_file.touch()
+    assert not mod_autils.is_excluded_raw(other_file, ["dir/"], root)

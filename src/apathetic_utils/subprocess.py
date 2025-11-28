@@ -3,9 +3,10 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
-import subprocess
+import subprocess as _subprocess_module
 import sys
 import tempfile
 from collections.abc import Iterator
@@ -21,7 +22,7 @@ class SubprocessResult:
 
     def __init__(
         self,
-        result: subprocess.CompletedProcess[str],
+        result: _subprocess_module.CompletedProcess[str],
     ) -> None:
         self.result = result
 
@@ -56,7 +57,7 @@ class SubprocessResultWithBypass:
 
     def __init__(
         self,
-        result: subprocess.CompletedProcess[str],
+        result: _subprocess_module.CompletedProcess[str],
         bypass_output: str,
     ) -> None:
         self.result = result
@@ -225,7 +226,7 @@ class ApatheticUtils_Internal_Subprocess:  # noqa: N801  # pyright: ignore[repor
             proc_env.update(env)
 
         # Run subprocess with normal capture
-        result = subprocess.run(  # noqa: S603
+        result = _subprocess_module.run(  # noqa: S603
             args,
             cwd=cwd,
             env=proc_env,
@@ -299,10 +300,12 @@ class ApatheticUtils_Internal_Subprocess:  # noqa: N801  # pyright: ignore[repor
         if env:
             proc_env.update(env)
 
-        # Create Python wrapper script that modifies sys.__stdout__
-        # This wrapper runs before the actual command and sets __stdout__ to fd 3
+        # Create Python wrapper script that modifies sys.__stdout__ and runs command
+        # For Python commands, we exec the script code in this process
+        # Use __import__ to avoid namespace collisions in stitched standalone mode
         wrapper_script = """import sys
 import os
+import json
 
 # Modify __stdout__ to point to fd 3 (preserved original stdout)
 try:
@@ -313,12 +316,35 @@ except (OSError, ValueError):
     pass
 
 # Execute the actual command
-import subprocess
-import sys as sys_module
-
-# Reconstruct the original command from environment
-cmd = os.environ.get('_WRAPPED_CMD').split(chr(0))
-sys_module.exit(subprocess.run(cmd).returncode)
+# Reconstruct the original command from environment (using JSON for safety)
+cmd_json = os.environ.get('_WRAPPED_CMD')
+if cmd_json:
+    cmd = json.loads(cmd_json)
+    if cmd and len(cmd) > 0:
+        # If it's a Python command with a script file, exec in this process
+        is_python = (
+            cmd[0] == sys.executable
+            or cmd[0].endswith('python')
+            or 'python' in cmd[0]
+        )
+        if is_python and len(cmd) > 1:
+            # Execute the script file in this process (after __stdout__ mod)
+            script_path = cmd[1]
+            with open(script_path, 'r') as f:
+                script_code = f.read()
+            # Execute in current namespace so __stdout__ modification applies
+            exec(
+                compile(script_code, script_path, 'exec'),
+                {'__name__': '__main__', '__file__': script_path},
+            )
+            sys.exit(0)
+        else:
+            # For other commands, exec directly
+            os.execvpe(cmd[0], cmd, os.environ)
+    else:
+        sys.exit(1)
+else:
+    sys.exit(1)
 """
 
         # Create temporary wrapper script
@@ -332,8 +358,8 @@ sys_module.exit(subprocess.run(cmd).returncode)
             # Create pipes for stdout capture
             read_pipe, write_pipe = os.pipe()
 
-            # Set up command in environment (use null separator for safety)
-            proc_env["_WRAPPED_CMD"] = "\0".join(args)
+            # Set up command in environment (use JSON for safety)
+            proc_env["_WRAPPED_CMD"] = json.dumps(args)
 
             # Create shell command that:
             # 1. Preserves original stdout to fd 3: exec 3>&1
@@ -348,12 +374,12 @@ exec {shutil.which("python3") or sys.executable} {wrapper_path}
             # Run the shell command
             # Note: We can't use capture_output=True because we need pass_fds
             # which is incompatible with capture_output. We need manual PIPE setup.
-            result = subprocess.run(  # noqa: S603, UP022
+            result = _subprocess_module.run(  # noqa: S603, UP022
                 ["/bin/bash", "-c", shell_cmd],
                 cwd=cwd,
                 env=proc_env,
-                stdout=subprocess.PIPE,  # This captures fd 3 output (bypass)
-                stderr=subprocess.PIPE,  # This captures stderr
+                stdout=_subprocess_module.PIPE,  # This captures fd 3 output (bypass)
+                stderr=_subprocess_module.PIPE,  # This captures stderr
                 text=True,
                 check=check,
                 pass_fds=(write_pipe,),
@@ -377,7 +403,7 @@ exec {shutil.which("python3") or sys.executable} {wrapper_path}
             # - result.stderr contains stderr
 
             # Create a modified CompletedProcess with swapped stdout
-            modified_result = subprocess.CompletedProcess(
+            modified_result = _subprocess_module.CompletedProcess(
                 args=args,
                 returncode=result.returncode,
                 stdout=captured_stdout,  # Normal output from pipe

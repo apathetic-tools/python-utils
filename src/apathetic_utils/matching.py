@@ -10,8 +10,6 @@ from pathlib import Path
 
 from apathetic_logging import getLogger
 
-from .version import ApatheticUtils_Internal_Version
-
 
 class ApatheticUtils_Internal_Matching:  # noqa: N801  # pyright: ignore[reportUnusedClass]
     """Mixin class that provides pattern matching functionality.
@@ -107,16 +105,14 @@ class ApatheticUtils_Internal_Matching:  # noqa: N801  # pyright: ignore[reportU
         Returns:
             True if the path matches the pattern, False otherwise.
         """
-        if (
-            ApatheticUtils_Internal_Version.get_sys_version_info() >= (3, 11)
-            or "**" not in pattern
-        ):
-            return fnmatchcase(path, pattern)
-        return bool(
-            ApatheticUtils_Internal_Matching._compile_glob_recursive(pattern).match(
-                path
+        # Always use backport for ** patterns since fnmatchcase doesn't support **
+        if "**" in pattern:
+            return bool(
+                ApatheticUtils_Internal_Matching._compile_glob_recursive(pattern).match(
+                    path
+                )
             )
-        )
+        return fnmatchcase(path, pattern)
 
     @staticmethod
     def is_excluded_raw(  # noqa: PLR0911, PLR0912, PLR0915, C901
