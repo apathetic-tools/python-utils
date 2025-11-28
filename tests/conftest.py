@@ -20,13 +20,24 @@ from apathetic_logging import (
     removeLogger,
 )
 
-from tests.utils import runtime_swap
+import apathetic_utils
+from tests.utils.constants import (
+    BUNDLER_SCRIPT,
+    PROGRAM_PACKAGE,
+    PROGRAM_SCRIPT,
+    PROJ_ROOT,
+)
 
 
 safeTrace = makeSafeTrace("⚡️")
 
 # early jank hook
-runtime_swap()
+apathetic_utils.runtime_swap(
+    PROJ_ROOT,
+    PROGRAM_PACKAGE,
+    PROGRAM_SCRIPT,
+    BUNDLER_SCRIPT,
+)
 
 
 @pytest.fixture(autouse=True)

@@ -7,6 +7,7 @@ import os
 import sys
 from collections.abc import Callable
 from contextlib import suppress
+from pathlib import Path
 from types import ModuleType
 from typing import Any
 from unittest.mock import MagicMock
@@ -20,6 +21,19 @@ class ApatheticUtils_Internal_Testing:  # noqa: N801  # pyright: ignore[reportUn
     Inherit from this mixin in your test classes to access shared test utilities
     that can be used across multiple projects.
     """
+
+    @staticmethod
+    def _short_path(path: str | None) -> str:
+        """Return a shortened version of a path for logging."""
+        if not path:
+            return "n/a"
+        # Use a simple approach: show last MAX_PATH_COMPONENTS or full path if shorter
+        MAX_PATH_COMPONENTS = 3
+        path_obj = Path(path)
+        parts = path_obj.parts
+        if len(parts) > MAX_PATH_COMPONENTS:
+            return str(Path(*parts[-MAX_PATH_COMPONENTS:]))
+        return path
 
     @staticmethod
     def is_running_under_pytest() -> bool:
@@ -264,5 +278,8 @@ class ApatheticUtils_Internal_Testing:  # noqa: N801  # pyright: ignore[reportUn
                 did_patch = True
 
             if did_patch and id(m) not in patched_ids:
-                safeTrace(f"  also patched {name} (path={path})")
+                safeTrace(
+                    f"  also patched {name} "
+                    f"(path={ApatheticUtils_Internal_Testing._short_path(path)})"
+                )
                 patched_ids.add(id(m))

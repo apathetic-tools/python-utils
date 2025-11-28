@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.utils.build_tools import find_shiv
+import apathetic_utils
 from tests.utils.constants import PROJ_ROOT
 
 
@@ -149,7 +149,7 @@ testpkg = "testpkg.module:main"
     (tmp_path / "dist").mkdir(exist_ok=True)
 
     # --- execute: first build ---
-    shiv_cmd = find_shiv()
+    shiv_cmd = apathetic_utils.find_shiv()
     result1 = subprocess.run(  # noqa: S603
         [
             shiv_cmd,
@@ -341,7 +341,7 @@ def test_zipapp_build_produces_valid_file() -> None:
     zipapp_file.parent.mkdir(parents=True, exist_ok=True)
 
     # --- execute: build zipapp ---
-    shiv_cmd = find_shiv()
+    shiv_cmd = apathetic_utils.find_shiv()
     result = subprocess.run(  # noqa: S603
         [
             shiv_cmd,
@@ -401,7 +401,7 @@ def test_zipapp_build_is_deterministic() -> None:
     zipapp_file.parent.mkdir(parents=True, exist_ok=True)
 
     # --- execute: first build ---
-    shiv_cmd = find_shiv()
+    shiv_cmd = apathetic_utils.find_shiv()
     result1 = subprocess.run(  # noqa: S603
         [
             shiv_cmd,

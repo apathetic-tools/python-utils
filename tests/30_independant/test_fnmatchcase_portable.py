@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 import apathetic_utils as mod_autils
-from tests.utils import patch_everywhere
+from tests.utils.constants import PATCH_STITCH_HINTS, PROGRAM_PACKAGE
 
 
 def test_fnmatchcase_portable_non_recursive_pattern() -> None:
@@ -37,11 +37,13 @@ def test_fnmatchcase_portable_recursive_pattern_py310(
     # --- setup ---
     # Force Python 3.10
     fake_sys = SimpleNamespace(version_info=(3, 10, 0))
-    patch_everywhere(
+    mod_autils.patch_everywhere(
         monkeypatch,
         mod_autils.apathetic_utils,
         "get_sys_version_info",
         lambda: fake_sys.version_info,
+        PROGRAM_PACKAGE,
+        PATCH_STITCH_HINTS,
     )
 
     # --- execute and verify ---

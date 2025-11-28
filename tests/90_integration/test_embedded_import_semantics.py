@@ -21,7 +21,7 @@ import zipfile
 
 import pytest
 
-from tests.utils.build_tools import find_shiv
+import apathetic_utils
 from tests.utils.constants import PROJ_ROOT
 
 
@@ -164,7 +164,7 @@ def test_zipapp_import_semantics() -> None:
     zipapp_file.parent.mkdir(parents=True, exist_ok=True)
 
     # --- execute: build zipapp ---
-    shiv_cmd = find_shiv()
+    shiv_cmd = apathetic_utils.find_shiv()
     result = subprocess.run(  # noqa: S603
         [
             shiv_cmd,
@@ -199,15 +199,15 @@ def test_zipapp_import_semantics() -> None:
 
     try:
         # Import apathetic_utils from the zipapp
-        import apathetic_utils  # noqa: PLC0415
+        import apathetic_utils as zipapp_apathetic_utils  # noqa: PLC0415
 
         # --- verify: import semantics ---
         # Verify apathetic_utils namespace is available
-        assert hasattr(apathetic_utils, "apathetic_utils"), (
+        assert hasattr(zipapp_apathetic_utils, "apathetic_utils"), (
             "apathetic_utils.apathetic_utils should be available"
         )
 
-        apathetic_utils_ns = apathetic_utils.apathetic_utils
+        apathetic_utils_ns = zipapp_apathetic_utils.apathetic_utils
         # Verify it's a class (the namespace class)
         assert isinstance(apathetic_utils_ns, type), (
             "apathetic_utils should be a class (namespace)"

@@ -24,7 +24,7 @@ from types import SimpleNamespace
 import pytest
 
 import apathetic_utils as mod_autils
-from tests.utils import patch_everywhere
+from tests.utils.constants import PATCH_STITCH_HINTS, PROGRAM_PACKAGE
 
 
 def test_is_excluded_raw_matches_patterns(tmp_path: Path) -> None:
@@ -210,11 +210,13 @@ def test_gitignore_double_star_backport_py310(
     # Force utils to think it's running on Python 3.10
     fake_sys = SimpleNamespace(version_info=(3, 10, 0))
     # Patch on the namespace class where the method actually exists
-    patch_everywhere(
+    mod_autils.patch_everywhere(
         monkeypatch,
         mod_autils.apathetic_utils,
         "get_sys_version_info",
         lambda: fake_sys.version_info,
+        PROGRAM_PACKAGE,
+        PATCH_STITCH_HINTS,
     )
     result = mod_autils.is_excluded_raw(nested, ["dir/**/*.py"], root)
 
