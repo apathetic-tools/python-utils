@@ -41,6 +41,7 @@ else:
 
 # CI
 CI_ENV_VARS = apathetic_utils.CI_ENV_VARS
+if_ci = apathetic_utils.if_ci
 is_ci = apathetic_utils.is_ci
 
 # Files
@@ -51,10 +52,15 @@ load_toml = apathetic_utils.load_toml
 fnmatchcase_portable = apathetic_utils.fnmatchcase_portable
 is_excluded_raw = apathetic_utils.is_excluded_raw
 
+# Modules
+detect_packages_from_files = apathetic_utils.detect_packages_from_files
+find_all_packages_under_path = apathetic_utils.find_all_packages_under_path
+
 # Paths
 get_glob_root = apathetic_utils.get_glob_root
 has_glob_chars = apathetic_utils.has_glob_chars
 normalize_path_string = apathetic_utils.normalize_path_string
+strip_common_prefix = apathetic_utils.strip_common_prefix
 
 # System
 # CapturedOutput is a nested class in ApatheticUtils_Internal_Subprocess that
@@ -70,8 +76,20 @@ else:
 capture_output = apathetic_utils.capture_output
 create_version_info = apathetic_utils.create_version_info
 detect_runtime_mode = apathetic_utils.detect_runtime_mode
+ensure_standalone_script_up_to_date = (
+    apathetic_utils.ensure_standalone_script_up_to_date
+)
+ensure_zipapp_up_to_date = apathetic_utils.ensure_zipapp_up_to_date
+find_shiv = apathetic_utils.find_shiv
 get_sys_version_info = apathetic_utils.get_sys_version_info
 is_running_under_pytest = apathetic_utils.is_running_under_pytest
+run_with_output = apathetic_utils.run_with_output
+run_with_separated_output = apathetic_utils.run_with_separated_output
+runtime_swap = apathetic_utils.runtime_swap
+
+# Testing
+create_mock_superclass_test = apathetic_utils.create_mock_superclass_test
+patch_everywhere = apathetic_utils.patch_everywhere
 
 # Text
 plural = apathetic_utils.plural
@@ -88,6 +106,7 @@ __all__ = [  # noqa: RUF022
     "apathetic_utils",
     # ci
     "CI_ENV_VARS",
+    "if_ci",
     "is_ci",
     # files
     "load_jsonc",
@@ -95,17 +114,30 @@ __all__ = [  # noqa: RUF022
     # matching
     "fnmatchcase_portable",
     "is_excluded_raw",
+    # modules
+    "detect_packages_from_files",
+    "find_all_packages_under_path",
     # paths
     "get_glob_root",
     "has_glob_chars",
     "normalize_path_string",
+    "strip_common_prefix",
     # system
     "CapturedOutput",
     "capture_output",
     "create_version_info",
     "detect_runtime_mode",
+    "ensure_standalone_script_up_to_date",
+    "ensure_zipapp_up_to_date",
+    "find_shiv",
     "get_sys_version_info",
     "is_running_under_pytest",
+    "run_with_output",
+    "run_with_separated_output",
+    "runtime_swap",
+    # testing
+    "create_mock_superclass_test",
+    "patch_everywhere",
     # text
     "plural",
     "remove_path_in_error_message",
