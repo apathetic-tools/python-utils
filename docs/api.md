@@ -13,11 +13,16 @@ Complete API documentation for Apathetic Python Utils.
 | Category | Functions |
 |----------|-----------|
 | **File Loading** | [`load_jsonc()`](#load_jsonc), [`load_toml()`](#load_toml) |
-| **Path Utilities** | [`normalize_path_string()`](#normalize_path_string), [`has_glob_chars()`](#has_glob_chars), [`get_glob_root()`](#get_glob_root) |
+| **Path Utilities** | [`normalize_path_string()`](#normalize_path_string), [`has_glob_chars()`](#has_glob_chars), [`get_glob_root()`](#get_glob_root), [`strip_common_prefix()`](#strip_common_prefix) |
 | **Pattern Matching** | [`fnmatchcase_portable()`](#fnmatchcase_portable), [`is_excluded_raw()`](#is_excluded_raw) |
-| **System Detection** | [`is_ci()`](#is_ci), [`is_running_under_pytest()`](#is_running_under_pytest), [`detect_runtime_mode()`](#detect_runtime_mode), [`capture_output()`](#capture_output), [`get_sys_version_info()`](#get_sys_version_info) |
+| **Module Detection** | [`detect_packages_from_files()`](#detect_packages_from_files), [`find_all_packages_under_path()`](#find_all_packages_under_path) |
+| **System Detection** | [`is_ci()`](#is_ci), [`if_ci()`](#if_ci), [`is_running_under_pytest()`](#is_running_under_pytest), [`detect_runtime_mode()`](#detect_runtime_mode), [`capture_output()`](#capture_output), [`get_sys_version_info()`](#get_sys_version_info) |
+| **Runtime Utilities** | [`find_shiv()`](#find_shiv), [`ensure_standalone_script_up_to_date()`](#ensure_standalone_script_up_to_date), [`ensure_zipapp_up_to_date()`](#ensure_zipapp_up_to_date), [`runtime_swap()`](#runtime_swap) |
+| **Subprocess Utilities** | [`run_with_output()`](#run_with_output), [`run_with_separated_output()`](#run_with_separated_output) |
 | **Text Processing** | [`plural()`](#plural), [`remove_path_in_error_message()`](#remove_path_in_error_message) |
 | **Type Utilities** | [`safe_isinstance()`](#safe_isinstance), [`literal_to_set()`](#literal_to_set), [`cast_hint()`](#cast_hint), [`schema_from_typeddict()`](#schema_from_typeddict) |
+| **Version Utilities** | [`create_version_info()`](#create_version_info) |
+| **Testing Utilities** | [`create_mock_superclass_test()`](#create_mock_superclass_test), [`patch_everywhere()`](#patch_everywhere) |
 | **Constants** | [`CI_ENV_VARS`](#ci_env_vars) |
 
 ## File Loading
@@ -192,6 +197,37 @@ root = get_glob_root("tests/unit/**/*.py")
 # Returns: Path("tests/unit")
 ```
 
+### strip_common_prefix
+
+```python
+strip_common_prefix(path: str | Path, base: str | Path) -> str
+```
+
+Return `path` relative to `base`'s common prefix.
+
+Finds the longest shared prefix between two paths and returns the remaining portion of `path` relative to that common prefix.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `path` | `str \| Path` | Path to make relative |
+| `base` | `str \| Path` | Base path to find common prefix with |
+
+**Returns:**
+- `str`: Path relative to common prefix, or `"."` if no common prefix
+
+**Example:**
+```python
+from apathetic_utils import strip_common_prefix
+
+result = strip_common_prefix(
+    "/home/user/code/serger/src/serger/logs.py",
+    "/home/user/code/serger/tests/utils/patch_everywhere.py"
+)
+# Returns: "src/serger/logs.py"
+```
+
 ## Pattern Matching
 
 ### fnmatchcase_portable
@@ -264,6 +300,77 @@ is_excluded_raw("src/__pycache__/file.pyc", patterns, root)  # True
 is_excluded_raw("src/utils/file.py", patterns, root)         # False
 ```
 
+## Module Detection
+
+### detect_packages_from_files
+
+```python
+detect_packages_from_files(
+    file_paths: list[Path],
+    package_name: str,
+    *,
+    source_bases: list[str] | None = None,
+    _config_dir: Path | None = None
+) -> tuple[set[str], list[str]]
+```
+
+Detect packages from file paths.
+
+If files are under `source_bases` directories, treats everything after the matching base prefix as a package structure (regardless of `__init__.py`). Otherwise, follows Python's import rules: only detects regular packages (with `__init__.py` files). Falls back to configured `package_name` if none detected.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `file_paths` | `list[Path]` | List of file paths to check |
+| `package_name` | `str` | Configured package name (used as fallback) |
+| `source_bases` | `list[str] \| None` | Optional list of module base directories (absolute paths) |
+| `_config_dir` | `Path \| None` | Optional config directory (unused, kept for compatibility) |
+
+**Returns:**
+- `tuple[set[str], list[str]]`: Tuple of (set of detected package names, list of parent directories). Package names always includes `package_name`. Parent directories are returned as absolute paths, deduplicated.
+
+**Example:**
+```python
+from apathetic_utils import detect_packages_from_files
+from pathlib import Path
+
+files = [Path("src/mypkg/module.py"), Path("src/otherpkg/file.py")]
+packages, parents = detect_packages_from_files(
+    files,
+    "mypkg",
+    source_bases=["/path/to/src"]
+)
+# packages: {"mypkg", "otherpkg", "mypkg"} (includes configured name)
+# parents: ["/path/to/src"]
+```
+
+### find_all_packages_under_path
+
+```python
+find_all_packages_under_path(root_path: Path) -> set[str]
+```
+
+Find all package names under a directory by scanning for `__init__.py` files.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `root_path` | `Path` | Path to the root directory to scan |
+
+**Returns:**
+- `set[str]`: Set of package names found under the root directory
+
+**Example:**
+```python
+from apathetic_utils import find_all_packages_under_path
+from pathlib import Path
+
+packages = find_all_packages_under_path(Path("src"))
+# Returns: {"mypkg", "otherpkg"} (all top-level packages with __init__.py)
+```
+
 ## System Detection
 
 ### is_ci
@@ -290,6 +397,37 @@ from apathetic_utils import is_ci
 if is_ci():
     print("Running in CI environment")
     # Adjust behavior for CI
+```
+
+### if_ci
+
+```python
+if_ci(ci_value: T, local_value: T) -> T
+```
+
+Return different values based on CI environment.
+
+Useful for tests that need different behavior or expectations in CI vs local development environments.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `ci_value` | `T` | Value to return when running in CI |
+| `local_value` | `T` | Value to return when running locally |
+
+**Returns:**
+- `T`: `ci_value` if running in CI, otherwise `local_value`
+
+**Example:**
+```python
+from apathetic_utils import if_ci
+
+# Different regex patterns for commit hashes
+commit_pattern = if_ci(
+    r"[0-9a-f]{4,}",  # CI: expect actual commit hash
+    r"unknown \\(local build\\)"  # Local: expect placeholder
+)
 ```
 
 ### is_running_under_pytest
@@ -409,6 +547,295 @@ from apathetic_utils import get_sys_version_info
 
 version = get_sys_version_info()
 print(f"Python {version[0]}.{version[1]}.{version[2]}")
+```
+
+## Runtime Utilities
+
+### find_shiv
+
+```python
+find_shiv() -> str
+```
+
+Find the shiv executable.
+
+Searches for shiv in:
+1. System PATH
+2. Poetry virtual environment (if poetry is available)
+
+**Returns:**
+- `str`: Path to the shiv executable
+
+**Raises:**
+- `RuntimeError`: If shiv is not found in PATH or poetry venv
+
+**Example:**
+```python
+from apathetic_utils import find_shiv
+
+shiv_path = find_shiv()
+# Returns: "/path/to/shiv" or "/path/to/venv/bin/shiv"
+```
+
+### ensure_standalone_script_up_to_date
+
+```python
+ensure_standalone_script_up_to_date(
+    root: Path,
+    script_name: str,
+    package_name: str,
+    bundler_script: str
+) -> Path
+```
+
+Rebuild standalone script if missing or outdated.
+
+Checks if the standalone script exists and is newer than all source files. If not, rebuilds it using the bundler script.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `root` | `Path` | Project root directory |
+| `script_name` | `str` | Name of the standalone script (without .py extension) |
+| `package_name` | `str` | Name of the package (e.g., "apathetic_utils") |
+| `bundler_script` | `str` | Path to the bundler script (relative to root) |
+
+**Returns:**
+- `Path`: Path to the standalone script
+
+**Raises:**
+- `RuntimeError`: If the script generation fails
+
+**Example:**
+```python
+from apathetic_utils import ensure_standalone_script_up_to_date
+from pathlib import Path
+
+script_path = ensure_standalone_script_up_to_date(
+    Path("."),
+    "my_script",
+    "my_package",
+    "bin/serger.py"
+)
+```
+
+### ensure_zipapp_up_to_date
+
+```python
+ensure_zipapp_up_to_date(
+    root: Path,
+    script_name: str,
+    package_name: str
+) -> Path
+```
+
+Rebuild zipapp if missing or outdated.
+
+Checks if the zipapp exists and is newer than all source files. If not, rebuilds it using shiv.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `root` | `Path` | Project root directory |
+| `script_name` | `str` | Name of the zipapp (without .pyz extension) |
+| `package_name` | `str` | Name of the package (e.g., "apathetic_utils") |
+
+**Returns:**
+- `Path`: Path to the zipapp
+
+**Raises:**
+- `RuntimeError`: If the zipapp generation fails
+
+**Example:**
+```python
+from apathetic_utils import ensure_zipapp_up_to_date
+from pathlib import Path
+
+zipapp_path = ensure_zipapp_up_to_date(
+    Path("."),
+    "my_script",
+    "my_package"
+)
+```
+
+### runtime_swap
+
+```python
+runtime_swap(
+    root: Path,
+    package_name: str,
+    script_name: str,
+    bundler_script: str,
+    mode: str | None = None
+) -> bool
+```
+
+Pre-import hook — runs before any tests or plugins are imported.
+
+Swaps in the appropriate runtime module based on `RUNTIME_MODE`:
+- `installed` (default): uses `src/{package_name}` (no swap needed)
+- `singlefile`: uses `dist/{script_name}.py` (serger-built single file)
+- `zipapp`: uses `dist/{script_name}.pyz` (shiv-built zipapp)
+
+This ensures all test imports work transparently regardless of runtime mode.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `root` | `Path` | Project root directory |
+| `package_name` | `str` | Name of the package (e.g., "apathetic_utils") |
+| `script_name` | `str` | Name of the standalone script (without extension) |
+| `bundler_script` | `str` | Path to the bundler script (relative to root) |
+| `mode` | `str \| None` | Runtime mode override. If None, reads from `RUNTIME_MODE` env var. |
+
+**Returns:**
+- `bool`: `True` if swap was performed, `False` if in installed mode
+
+**Raises:**
+- `pytest.UsageError`: If mode is invalid or build fails
+
+**Example:**
+```python
+from apathetic_utils import runtime_swap
+from pathlib import Path
+
+# In pytest conftest.py or similar
+runtime_swap(
+    Path(__file__).parent.parent,
+    "my_package",
+    "my_script",
+    "bin/serger.py",
+    mode="singlefile"  # or None to read from RUNTIME_MODE env var
+)
+```
+
+## Subprocess Utilities
+
+### run_with_output
+
+```python
+run_with_output(
+    args: list[str],
+    *,
+    cwd: Path | str | None = None,
+    initial_env: dict[str, str] | None = None,
+    env: dict[str, str] | None = None,
+    forward_to: str | None = "normal",
+    check: bool = False,
+    **kwargs: Any
+) -> SubprocessResult
+```
+
+Run subprocess and capture all output with optional forwarding.
+
+This helper captures subprocess output and can optionally forward it to different destinations. It ensures captured output is available for error messages and can be displayed in real-time if desired.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `args` | `list[str]` | Command and arguments to run |
+| `cwd` | `Path \| str \| None` | Working directory |
+| `initial_env` | `dict[str, str] \| None` | Initial environment state. If None, uses `os.environ.copy()`. If provided, starts with this environment (can be empty dict for blank environment). |
+| `env` | `dict[str, str] \| None` | Additional environment variables to add/override |
+| `forward_to` | `str \| None` | Where to forward captured output. Options: `"bypass"` (forward to `sys.__stdout__`/`sys.__stderr__`), `"normal"` (forward to `sys.stdout`/`sys.stderr`), `None` (don't forward). Defaults to `"normal"`. |
+| `check` | `bool` | If True, raise `CalledProcessError` on non-zero exit |
+| `**kwargs` | `Any` | Additional arguments passed to `subprocess.run()` |
+
+**Returns:**
+- `SubprocessResult`: Result object with all captured output
+
+**SubprocessResult Attributes:**
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `stdout` | `str` | Captured stdout |
+| `stderr` | `str` | Captured stderr |
+| `returncode` | `int` | Return code from subprocess |
+| `all_output` | `str` | All output combined: stdout + stderr |
+
+**Example:**
+```python
+from apathetic_utils import run_with_output
+import sys
+
+# Use current environment with additional vars
+result = run_with_output(
+    [sys.executable, "-m", "serger", "--config", "config.json"],
+    cwd=tmp_path,
+    env={"LOG_LEVEL": "test"},
+)
+
+# Forward output to bypass (visible in real-time, bypasses capsys)
+result = run_with_output(
+    [sys.executable, "-m", "serger", "--config", "config.json"],
+    cwd=tmp_path,
+    env={"LOG_LEVEL": "test"},
+    forward_to="bypass",
+)
+
+# On test failure, output will be included
+assert result.returncode == 0, f"Failed: {result.all_output}"
+```
+
+### run_with_separated_output
+
+```python
+run_with_separated_output(
+    args: list[str],
+    *,
+    cwd: Path | str | None = None,
+    initial_env: dict[str, str] | None = None,
+    env: dict[str, str] | None = None,
+    check: bool = False,
+    **kwargs: Any
+) -> SubprocessResultWithBypass
+```
+
+Run subprocess with stdout and `__stdout__` captured separately.
+
+This uses a Python wrapper to modify `sys.__stdout__` before the command runs, allowing code to write to stdout and `__stdout__` normally without any changes. Normal output (stdout) is captured, while bypass output (`__stdout__`) goes to the parent's stdout.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `args` | `list[str]` | Command and arguments to run (must be a Python command) |
+| `cwd` | `Path \| str \| None` | Working directory |
+| `initial_env` | `dict[str, str] \| None` | Initial environment state. If None, uses `os.environ.copy()`. If provided, starts with this environment (can be empty dict for blank environment). |
+| `env` | `dict[str, str] \| None` | Additional environment variables to add/override |
+| `check` | `bool` | If True, raise `CalledProcessError` on non-zero exit |
+| `**kwargs` | `Any` | Additional arguments passed to `subprocess.run()` |
+
+**Returns:**
+- `SubprocessResultWithBypass`: Result object with separate stdout and bypass_output
+
+**SubprocessResultWithBypass Attributes:**
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `stdout` | `str` | Captured stdout (normal output, excluding bypass) |
+| `stderr` | `str` | Captured stderr |
+| `bypass_output` | `str` | Bypass output (written to `sys.__stdout__`) |
+| `returncode` | `int` | Return code from subprocess |
+| `all_output` | `str` | All output combined: stdout + stderr + bypass |
+
+**Example:**
+```python
+from apathetic_utils import run_with_separated_output
+import sys
+
+result = run_with_separated_output(
+    [sys.executable, "-m", "serger", "--config", "config.json"],
+    cwd=tmp_path,
+    env={"LOG_LEVEL": "test"},
+)
+# stdout contains normal output (captured)
+# bypass_output contains output written to __stdout__
+assert result.returncode == 0, f"Failed: {result.all_output}"
 ```
 
 ## Text Processing
@@ -628,6 +1055,152 @@ class Config(TypedDict):
 
 schema = schema_from_typeddict(Config)
 # Returns: {"name": str, "value": int}
+```
+
+## Version Utilities
+
+### create_version_info
+
+```python
+create_version_info(major: int, minor: int, micro: int = 0) -> Any
+```
+
+Create a mock `sys.version_info` object with major and minor attributes.
+
+This properly mocks `sys.version_info` so it can be used with attribute access (`.major`, `.minor`) and tuple comparison, matching the behavior of the real `sys.version_info` object (which is a named tuple).
+
+Useful for testing or when you need to simulate different Python versions.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `major` | `int` | Major version number (e.g., 3) |
+| `minor` | `int` | Minor version number (e.g., 11) |
+| `micro` | `int` | Micro version number (default: 0) |
+
+**Returns:**
+- `Any`: A mock version_info object with `.major`, `.minor`, `.micro` attributes and tuple-like comparison support
+
+**Example:**
+```python
+from apathetic_utils import create_version_info
+
+version = create_version_info(3, 11)
+assert version.major == 3
+assert version.minor == 11
+assert version >= (3, 10)
+```
+
+## Testing Utilities
+
+### create_mock_superclass_test
+
+```python
+create_mock_superclass_test(
+    mixin_class: type,
+    parent_class: type,
+    method_name: str,
+    camel_case_method_name: str,
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch
+) -> None
+```
+
+Test that a mixin's snake_case method calls parent's camelCase via `super()`.
+
+Creates a test class with controlled MRO:
+- TestClass inherits from mixin_class, then MockBaseClass
+- MockBaseClass provides the camelCase method that `super()` resolves to
+- Mocks the camelCase method and verifies it's called
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `mixin_class` | `type` | The mixin class containing the snake_case method |
+| `parent_class` | `type` | The parent class with the camelCase method (e.g., `logging.Logger`) |
+| `method_name` | `str` | Name of the snake_case method to test (e.g., "add_filter") |
+| `camel_case_method_name` | `str` | Name of the camelCase method to mock (e.g., "addFilter") |
+| `args` | `tuple[Any, ...]` | Arguments to pass to the snake_case method |
+| `kwargs` | `dict[str, Any]` | Keyword arguments to pass to the snake_case method |
+| `monkeypatch` | `pytest.MonkeyPatch` | pytest.MonkeyPatch fixture for patching |
+
+**Raises:**
+- `AssertionError`: If the camelCase method was not called as expected
+
+**Example:**
+```python
+from apathetic_utils import create_mock_superclass_test
+import logging
+import pytest
+
+def test_mixin_calls_parent(monkeypatch):
+    create_mock_superclass_test(
+        MyMixin,
+        logging.Logger,
+        "add_filter",
+        "addFilter",
+        (logging.Filter(),),
+        {},
+        monkeypatch
+    )
+```
+
+### patch_everywhere
+
+```python
+patch_everywhere(
+    mp: pytest.MonkeyPatch,
+    mod_env: ModuleType | Any,
+    func_name: str,
+    replacement_func: Callable[..., object],
+    package_prefix: str,
+    stitch_hints: set[str] | None = None,
+    create_if_missing: bool = False
+) -> None
+```
+
+Replace a function everywhere it was imported.
+
+Works in both package and stitched single-file runtimes. Walks `sys.modules` once and handles:
+- the defining module
+- any other module that imported the same function object
+- any freshly reloaded stitched modules (heuristic: path matches hints)
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `mp` | `pytest.MonkeyPatch` | pytest.MonkeyPatch instance to use for patching |
+| `mod_env` | `ModuleType \| Any` | Module or object containing the function to patch |
+| `func_name` | `str` | Name of the function to patch |
+| `replacement_func` | `Callable[..., object]` | Function to replace the original with |
+| `package_prefix` | `str` | Package name prefix to filter modules (e.g., "apathetic_utils") |
+| `stitch_hints` | `set[str] \| None` | Set of path hints to identify stitched modules. Defaults to `{"/dist/", "standalone"}`. |
+| `create_if_missing` | `bool` | If True, create the attribute if it doesn't exist. If False (default), raise TypeError if the function doesn't exist. |
+
+**Raises:**
+- `TypeError`: If the function doesn't exist and `create_if_missing=False`
+
+**Example:**
+```python
+from apathetic_utils import patch_everywhere
+import pytest
+import my_module
+
+def test_patch_function(monkeypatch):
+    def mock_func():
+        return "mocked"
+    
+    patch_everywhere(
+        monkeypatch,
+        my_module,
+        "original_func",
+        mock_func,
+        "my_module"
+    )
 ```
 
 ## Constants

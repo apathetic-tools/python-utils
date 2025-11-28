@@ -56,9 +56,13 @@ For installation guides, API reference, examples, and more, visit our documentat
 - 📁 **File loading** — Load TOML and JSONC files with comment support
 - 🛤️ **Path utilities** — Cross-platform path normalization and glob handling
 - 🔍 **Pattern matching** — Portable glob pattern matching with recursive `**` support
+- 🧩 **Module detection** — Detect Python packages from file paths
 - 🧪 **System detection** — Detect CI environments, pytest execution, and runtime modes
+- ⚙️ **Runtime utilities** — Build and test utilities for standalone scripts and zipapps
+- 🔧 **Subprocess utilities** — Capture and forward subprocess output
 - 📝 **Text processing** — Pluralization and error message cleanup utilities
 - 🔧 **Type utilities** — Safe isinstance checks for TypedDicts and generics
+- 🧪 **Testing utilities** — Helpers for testing mixins and patching functions
 - 🎯 **CLI-friendly** — Designed with command-line applications in mind
 
 ---
