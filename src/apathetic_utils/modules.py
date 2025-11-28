@@ -192,8 +192,8 @@ class ApatheticUtils_Internal_Modules:  # noqa: N801  # pyright: ignore[reportUn
                             # Detect all directory levels between base and file
                             # (excluding the file itself and the base)
                             # More than base + first level + file
-                            MIN_NESTED_PARTS = 3
-                            if len(rel_path.parts) >= MIN_NESTED_PARTS:
+                            min_nested_parts = 3
+                            if len(rel_path.parts) >= min_nested_parts:
                                 # Walk from base to file, detecting intermediate dirs
                                 current = base_path
                                 for part in rel_path.parts[:-1]:  # Exclude filename

@@ -52,20 +52,22 @@ else:
     mod_logging_source = getattr(mod_logging, "__file__", "unknown")
     was_in_sys_modules = False
 
-safeTrace = mod_logging.makeSafeTrace("⚡️")
+safe_trace = mod_logging.makeSafeTrace("⚡️")
 
 # Debug: show which apathetic_logging module we're using
 if was_in_sys_modules:
-    safeTrace(
+    safe_trace(
         f"🔍 conftest: Using apathetic_logging from sys.modules: {mod_logging_source}"
     )
 else:
-    safeTrace(f"🔍 conftest: Imported apathetic_logging normally: {mod_logging_source}")
+    safe_trace(
+        f"🔍 conftest: Imported apathetic_logging normally: {mod_logging_source}"
+    )
 
 # Register a logger name so getLogger() returns a named logger (not root)
 # This ensures getLogger() returns a Logger instance with trace method
 mod_logging.registerLogger(PROGRAM_PACKAGE)
-safeTrace(
+safe_trace(
     f"🔍 conftest: Registered logger '{PROGRAM_PACKAGE}' "
     f"using apathetic_logging from: {mod_logging_source}"
 )

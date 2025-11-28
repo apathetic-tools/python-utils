@@ -28,11 +28,11 @@ class ApatheticUtils_Internal_Testing:  # noqa: N801  # pyright: ignore[reportUn
         if not path:
             return "n/a"
         # Use a simple approach: show last MAX_PATH_COMPONENTS or full path if shorter
-        MAX_PATH_COMPONENTS = 3
+        max_path_components = 3
         path_obj = Path(path)
         parts = path_obj.parts
-        if len(parts) > MAX_PATH_COMPONENTS:
-            return str(Path(*parts[-MAX_PATH_COMPONENTS:]))
+        if len(parts) > max_path_components:
+            return str(Path(*parts[-max_path_components:]))
         return path
 
     @staticmethod
@@ -108,7 +108,7 @@ class ApatheticUtils_Internal_Testing:  # noqa: N801  # pyright: ignore[reportUn
 
             return method
 
-        MockBaseClass = type(
+        mock_base_class = type(
             "MockBaseClass",
             (),
             {camel_case_method_name: create_method(camel_method_unbound)},
@@ -117,11 +117,11 @@ class ApatheticUtils_Internal_Testing:  # noqa: N801  # pyright: ignore[reportUn
         # Create test class: mixin first, then base class
         # MRO: TestLogger -> Mixin -> MockBaseClass -> object
         # When super() is called from Mixin, it resolves to MockBaseClass
-        class TestClass(mixin_class, MockBaseClass):  # type: ignore[misc, valid-type]
+        class TestClass(mixin_class, mock_base_class):  # type: ignore[misc, valid-type]
             """Test class with controlled MRO for super() resolution."""
 
             def __init__(self) -> None:
-                MockBaseClass.__init__(self)  # type: ignore[misc]
+                mock_base_class.__init__(self)  # type: ignore[misc]
 
         # Create an instance of our test class
         test_instance = TestClass()
@@ -134,7 +134,7 @@ class ApatheticUtils_Internal_Testing:  # noqa: N801  # pyright: ignore[reportUn
 
         # Mock the base class method (what super() resolves to)
         mock_method = MagicMock(wraps=camel_method_unbound)
-        monkeypatch.setattr(MockBaseClass, camel_case_method_name, mock_method)
+        monkeypatch.setattr(mock_base_class, camel_case_method_name, mock_method)
         # Call the snake_case method on our test instance
         # Some methods may raise (e.g., invalid arguments)
         # That's okay - we just want to verify the mock was called

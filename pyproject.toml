@@ -219,14 +219,6 @@ ignore = [
   "TC003", # Move standard library import into TYPE_CHECKING block (too pedantic with __future__ annotations)
 
 #  "TRY300", # Consider moving this statement to an `else` block
-
-  # because the apathetic_utils library
-  #   specifically uses CamelCase to match the stdlib we extend,
-  #   don't complain:
-  "N802", # invalid-function-name (function names should be lowercase)
-  "N806", # Variable `MockBaseClass` in function should be lowercase
-  "N815", # mixed-case-variable-in-class-scope (class variables should be lowercase)
-  "N816", # mixed-case-variable-in-global-scope (global variables should be lowercase)
 ]
 
 [tool.ruff.lint.per-file-ignores]
