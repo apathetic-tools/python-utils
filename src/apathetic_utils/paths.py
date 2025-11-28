@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import re
+from itertools import zip_longest
 from pathlib import Path
 
 from apathetic_logging import getLogger
@@ -78,3 +79,35 @@ class ApatheticUtils_Internal_Paths:  # noqa: N801  # pyright: ignore[reportUnus
                 break
             parts.append(part)
         return Path(*parts) if parts else Path()
+
+    @staticmethod
+    def strip_common_prefix(path: str | Path, base: str | Path) -> str:
+        """Return `path` relative to `base`'s common prefix.
+
+        Example:
+            strip_common_prefix(
+                "/home/user/code/serger/src/serger/logs.py",
+                "/home/user/code/serger/tests/utils/patch_everywhere.py"
+            )
+            → "src/serger/logs.py"
+
+        Args:
+            path: Path to make relative
+            base: Base path to find common prefix with
+
+        Returns:
+            Path relative to common prefix, or "." if no common prefix
+        """
+        p = Path(path).resolve()
+        b = Path(base).resolve()
+
+        # Split both into parts and find the longest shared prefix
+        common_len = 0
+        for a, c in zip_longest(p.parts, b.parts):
+            if a != c:
+                break
+            common_len += 1
+
+        # Slice off the shared prefix
+        remaining = Path(*p.parts[common_len:])
+        return str(remaining) or "."

@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, TypeAlias, cast
 
 if TYPE_CHECKING:
     from .namespace import apathetic_utils as _apathetic_utils_class
-    from .system import ApatheticUtils_Internal_System
 
 # Get reference to the namespace class
 # In stitched mode: class is already defined in namespace.py (executed before this)
@@ -58,15 +57,18 @@ has_glob_chars = apathetic_utils.has_glob_chars
 normalize_path_string = apathetic_utils.normalize_path_string
 
 # System
-# CapturedOutput is a nested class in ApatheticUtils_Internal_System that
+# CapturedOutput is a nested class in ApatheticUtils_Internal_Subprocess that
 # is accessed via the namespace class.
 # Use TypeAlias to help mypy understand this is a class type.
 if TYPE_CHECKING:
-    CapturedOutput: TypeAlias = ApatheticUtils_Internal_System.CapturedOutput
+    from .subprocess import ApatheticUtils_Internal_Subprocess
+
+    CapturedOutput: TypeAlias = ApatheticUtils_Internal_Subprocess.CapturedOutput
 else:
     CapturedOutput = apathetic_utils.CapturedOutput
 
 capture_output = apathetic_utils.capture_output
+create_version_info = apathetic_utils.create_version_info
 detect_runtime_mode = apathetic_utils.detect_runtime_mode
 get_sys_version_info = apathetic_utils.get_sys_version_info
 is_running_under_pytest = apathetic_utils.is_running_under_pytest
@@ -100,6 +102,7 @@ __all__ = [  # noqa: RUF022
     # system
     "CapturedOutput",
     "capture_output",
+    "create_version_info",
     "detect_runtime_mode",
     "get_sys_version_info",
     "is_running_under_pytest",

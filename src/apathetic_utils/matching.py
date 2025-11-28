@@ -10,7 +10,7 @@ from pathlib import Path
 
 from apathetic_logging import getLogger
 
-from .system import ApatheticUtils_Internal_System
+from .version import ApatheticUtils_Internal_Version
 
 
 class ApatheticUtils_Internal_Matching:  # noqa: N801  # pyright: ignore[reportUnusedClass]
@@ -108,7 +108,7 @@ class ApatheticUtils_Internal_Matching:  # noqa: N801  # pyright: ignore[reportU
             True if the path matches the pattern, False otherwise.
         """
         if (
-            ApatheticUtils_Internal_System.get_sys_version_info() >= (3, 11)
+            ApatheticUtils_Internal_Version.get_sys_version_info() >= (3, 11)
             or "**" not in pattern
         ):
             return fnmatchcase(path, pattern)

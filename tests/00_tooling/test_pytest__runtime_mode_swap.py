@@ -25,13 +25,13 @@ from pathlib import Path
 import pytest
 from apathetic_logging import makeSafeTrace
 
-import apathetic_utils.system as amod_utils_system
+import apathetic_utils.runtime as amod_utils_runtime
 from tests.utils import PROGRAM_PACKAGE, PROGRAM_SCRIPT, PROJ_ROOT
 
 
 # --- convenience -----------------------------------------------------------
 
-_system = amod_utils_system.ApatheticUtils_Internal_System
+_runtime = amod_utils_runtime.ApatheticUtils_Internal_Runtime
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -46,13 +46,13 @@ DIST_ROOT = PROJ_ROOT / "dist"
 def list_important_modules() -> list[str]:
     """Return all importable submodules under the package, if available."""
     important: list[str] = []
-    if not hasattr(amod_utils_system, "__path__"):
+    if not hasattr(amod_utils_runtime, "__path__"):
         safeTrace("pkgutil.walk_packages skipped — standalone runtime (no __path__)")
-        important.append(amod_utils_system.__name__)
+        important.append(amod_utils_runtime.__name__)
     else:
         for _, name, _ in pkgutil.walk_packages(
-            amod_utils_system.__path__,
-            amod_utils_system.__name__ + ".",
+            amod_utils_runtime.__path__,
+            amod_utils_runtime.__name__ + ".",
         ):
             important.append(name)
 
@@ -113,29 +113,29 @@ def test_pytest_runtime_cache_integrity() -> None:
     # the version from the standalone script (which was loaded by runtime_swap)
     # rather than the one imported at the top of this file (which might be from
     # the installed package if it was imported before runtime_swap ran)
-    if mode == "singlefile" and "apathetic_utils.system" in sys.modules:
+    if mode == "singlefile" and f"{PROGRAM_PACKAGE}.runtime" in sys.modules:
         # Use the module from sys.modules, which should be from the standalone script
-        amod_utils_system_actual = sys.modules[f"{PROGRAM_PACKAGE}.system"]
+        amod_utils_runtime_actual = sys.modules[f"{PROGRAM_PACKAGE}.runtime"]
         # Check __file__ directly - for stitched modules, should point to
         # dist/apathetic_utils.py
-        utils_file_path = getattr(amod_utils_system_actual, "__file__", None)
+        utils_file_path = getattr(amod_utils_runtime_actual, "__file__", None)
         if utils_file_path:
             utils_file = str(utils_file_path)
         else:
             # Fall back to inspect.getsourcefile if __file__ is not available
-            utils_file = str(inspect.getsourcefile(amod_utils_system_actual) or "")
+            utils_file = str(inspect.getsourcefile(amod_utils_runtime_actual) or "")
     else:
         # Otherwise, use the module imported at the top of the file
-        amod_utils_system_actual = amod_utils_system
-        utils_file = str(inspect.getsourcefile(amod_utils_system_actual))
+        amod_utils_runtime_actual = amod_utils_runtime
+        utils_file = str(inspect.getsourcefile(amod_utils_runtime_actual))
     # --- execute ---
     safeTrace(f"RUNTIME_MODE={mode}")
-    safeTrace(f"{PROGRAM_PACKAGE}.system  → {utils_file}")
+    safeTrace(f"{PROGRAM_PACKAGE}.runtime  → {utils_file}")
 
     if os.getenv("TRACE"):
         dump_snapshot()
     # Access via main module to get the function from the namespace class
-    runtime_mode = _system.detect_runtime_mode(PROGRAM_PACKAGE)
+    runtime_mode = _runtime.detect_runtime_mode(PROGRAM_PACKAGE)
 
     if mode == "singlefile":
         # --- verify singlefile ---
@@ -162,7 +162,7 @@ def test_pytest_runtime_cache_integrity() -> None:
             # Module is from installed package, but that's OK as long as
             # detect_runtime_mode() correctly returns "standalone"
             safeTrace(
-                f"Note: apathetic_utils.system loaded from installed package "
+                f"Note: apathetic_utils.version loaded from installed package "
                 f"({utils_file}), but runtime_mode correctly detected as 'standalone'"
             )
 
@@ -171,8 +171,8 @@ def test_pytest_runtime_cache_integrity() -> None:
             f"sys.modules['{PROGRAM_PACKAGE}'] = {sys.modules.get(PROGRAM_PACKAGE)}",
         )
         safeTrace(
-            f"sys.modules['{PROGRAM_PACKAGE}.system']"
-            f" = {sys.modules.get(f'{PROGRAM_PACKAGE}.system')}",
+            f"sys.modules['{PROGRAM_PACKAGE}.runtime']"
+            f" = {sys.modules.get(f'{PROGRAM_PACKAGE}.runtime')}",
         )
 
     else:

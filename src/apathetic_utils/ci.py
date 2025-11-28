@@ -4,7 +4,10 @@
 from __future__ import annotations
 
 import os
-from typing import ClassVar
+from typing import ClassVar, TypeVar
+
+
+T = TypeVar("T")
 
 
 class ApatheticUtils_Internal_CI:  # noqa: N801  # pyright: ignore[reportUnusedClass]
@@ -38,3 +41,26 @@ class ApatheticUtils_Internal_CI:  # noqa: N801  # pyright: ignore[reportUnusedC
         return bool(
             any(os.getenv(var) for var in ApatheticUtils_Internal_CI.CI_ENV_VARS)
         )
+
+    @staticmethod
+    def if_ci(ci_value: T, local_value: T) -> T:
+        r"""Return different values based on CI environment.
+
+        Useful for tests that need different behavior or expectations
+        in CI vs local development environments.
+
+        Args:
+            ci_value: Value to return when running in CI
+            local_value: Value to return when running locally
+
+        Returns:
+            ci_value if running in CI, otherwise local_value
+
+        Example:
+            # Different regex patterns for commit hashes
+            commit_pattern = if_ci(
+                r"[0-9a-f]{4,}",  # CI: expect actual commit hash
+                r"unknown \\(local build\\)"  # Local: expect placeholder
+            )
+        """
+        return ci_value if ApatheticUtils_Internal_CI.is_ci() else local_value
