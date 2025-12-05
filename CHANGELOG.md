@@ -2,6 +2,46 @@
 
 <!-- version list -->
 
+## v0.2.2 (2025-12-05)
+
+### Bug Fixes
+
+- Trigger patch release
+  ([`b09f0af`](https://github.com/apathetic-tools/python-utils/commit/b09f0af829258bf88d41e63daa14c318771a3445))
+
+### Chores
+
+- **deps**: Bump actions/checkout from 5 to 6
+  ([#1](https://github.com/apathetic-tools/python-utils/pull/1),
+  [`56119b2`](https://github.com/apathetic-tools/python-utils/commit/56119b2769c68ea97feac5eab1e60957e9ef4b27))
+
+### Continuous Integration
+
+- Rename GitHub Actions workflow files
+  ([`55dc4db`](https://github.com/apathetic-tools/python-utils/commit/55dc4dbb314c24282b7eed46a032fb2586a7ddc5))
+
+### Documentation
+
+- **api**: Add missing functions to API documentation
+  ([`665f6b4`](https://github.com/apathetic-tools/python-utils/commit/665f6b4e64d1ece936c97cc2eb84b2cd3ac5f4ce))
+
+### Refactoring
+
+- Update code formatting and test structure
+  ([`8062cdf`](https://github.com/apathetic-tools/python-utils/commit/8062cdf108ea4349f7046b0f5d0ed1f55c4d77d6))
+
+- **project**: Major cleanup and module reorganization
+  ([`21ce5c0`](https://github.com/apathetic-tools/python-utils/commit/21ce5c037043f8133c20d848eb0b510776737fc7))
+
+### Testing
+
+- **30_independant**: Add tests migrated from serger
+  ([`da9f245`](https://github.com/apathetic-tools/python-utils/commit/da9f24528b6f611ef3e8af9731315b79eb6ebbe9))
+
+- **pytest**: Add parallel execution support and fix zipapp tests
+  ([`a4e5314`](https://github.com/apathetic-tools/python-utils/commit/a4e5314a63358c2e294f9823cfe9e9a577dd8c9a))
+
+
 ## v0.2.1 (2025-11-28)
 
 ### Bug Fixes
