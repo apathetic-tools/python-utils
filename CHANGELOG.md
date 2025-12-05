@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v0.3.0 (2025-12-05)
+
+### Continuous Integration
+
+- **release**: Install root package in workflow
+  ([`d8ab854`](https://github.com/apathetic-tools/python-utils/commit/d8ab8540a6f0d0b2f6845d04bcfc926ff15cf4a7))
+
+### Features
+
+- **runtime**: Standardize on 'stitched' runtime mode naming
+  ([`a1fe6ce`](https://github.com/apathetic-tools/python-utils/commit/a1fe6cec0583fe7bfde57862a3fecf5fb796cb31))
+
+
 ## v0.2.2 (2025-12-05)
 
 ### Bug Fixes
