@@ -187,13 +187,15 @@ def test_fnmatchcase_portable_no_glob_chars_delegates_to_fnmatchcase(
         amod_utils_matching,
         "fnmatchcase",
         counting_fnmatchcase,
-        PROGRAM_PACKAGE,
-        PATCH_STITCH_HINTS,
+        package_prefix=PROGRAM_PACKAGE,
+        stitch_hints=PATCH_STITCH_HINTS,
     )
 
     # --- execute ---
     # Pattern without '**' should use fnmatchcase
-    mod_autils.fnmatchcase_portable("src/main.py", "src/*.py")
+    # First verify behavior works correctly
+    result1 = mod_autils.fnmatchcase_portable("src/main.py", "src/*.py")
+    assert result1 is True, "Function should work correctly for patterns without **"
     fnmatchcase_calls_without_double_star = call_count
 
     # Pattern with '**' on Python 3.10 - verify it works
@@ -204,16 +206,19 @@ def test_fnmatchcase_portable_no_glob_chars_delegates_to_fnmatchcase(
         mod_autils.apathetic_utils,
         "get_sys_version_info",
         lambda: fake_sys.version_info,
-        PROGRAM_PACKAGE,
-        PATCH_STITCH_HINTS,
+        package_prefix=PROGRAM_PACKAGE,
+        stitch_hints=PATCH_STITCH_HINTS,
     )
     # Verify the function works correctly (behavior, not implementation)
-    result = mod_autils.fnmatchcase_portable("src/a/b/main.py", "src/**/main.py")
-    assert result is True
+    result2 = mod_autils.fnmatchcase_portable("src/a/b/main.py", "src/**/main.py")
+    assert result2 is True, "Function should work correctly for patterns with **"
 
     # --- verify ---
+    # Verify behavior is correct (always checked above)
+    # Implementation detail: patterns without ** should delegate to fnmatchcase
     assert fnmatchcase_calls_without_double_star > 0, (
-        "Expected fnmatchcase to be called for patterns without **"
+        "Expected fnmatchcase to be called for patterns without **. "
+        f"call_count={fnmatchcase_calls_without_double_star}"
     )
 
 
@@ -228,8 +233,8 @@ def test_fnmatchcase_portable_recursive_backport_python310(
         mod_autils.apathetic_utils,
         "get_sys_version_info",
         lambda: fake_sys.version_info,
-        PROGRAM_PACKAGE,
-        PATCH_STITCH_HINTS,
+        package_prefix=PROGRAM_PACKAGE,
+        stitch_hints=PATCH_STITCH_HINTS,
     )
 
     # --- execute + verify ---
@@ -254,8 +259,8 @@ def test_fnmatchcase_portable_recursive_pattern_py310(
         mod_autils.apathetic_utils,
         "get_sys_version_info",
         lambda: fake_sys.version_info,
-        PROGRAM_PACKAGE,
-        PATCH_STITCH_HINTS,
+        package_prefix=PROGRAM_PACKAGE,
+        stitch_hints=PATCH_STITCH_HINTS,
     )
 
     # --- execute and verify ---

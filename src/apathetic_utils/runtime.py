@@ -67,22 +67,36 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
         return "installed"
 
     @staticmethod
-    def find_shiv() -> str:
-        """Find the shiv executable.
+    def find_zipbundler() -> list[str]:
+        """Find the zipbundler command.
 
-        Searches for shiv in:
-        1. System PATH
-        2. Poetry virtual environment (if poetry is available)
+        Returns a command list suitable for subprocess.run().
+        Tries python -m zipbundler first, then zipbundler directly.
 
         Returns:
-            Path to the shiv executable
+            Command list (e.g., ["python", "-m", "zipbundler"] or ["zipbundler"])
 
         Raises:
-            RuntimeError: If shiv is not found in PATH or poetry venv
+            RuntimeError: If zipbundler is not found
         """
-        shiv_path = shutil.which("shiv")
-        if shiv_path:
-            return shiv_path
+        # Try python -m zipbundler first (most reliable)
+        try:
+            result = subprocess.run(  # noqa: S603
+                [sys.executable, "-m", "zipbundler", "--help"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if result.returncode == 0:
+                return [sys.executable, "-m", "zipbundler"]
+        except Exception:  # noqa: BLE001, S110
+            pass
+
+        # Fall back to zipbundler directly
+        zipbundler_path = shutil.which("zipbundler")
+        if zipbundler_path:
+            return [zipbundler_path]
+
         # If not in PATH, try to find it in the poetry venv
         poetry_cmd = shutil.which("poetry")
         if poetry_cmd:
@@ -94,37 +108,43 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
                     check=True,
                 )
                 venv_path = Path(venv_path_result.stdout.strip())
-                shiv_in_venv = venv_path / "bin" / "shiv"
-                if shiv_in_venv.exists():
-                    return str(shiv_in_venv)
+                zipbundler_in_venv = venv_path / "bin" / "zipbundler"
+                if zipbundler_in_venv.exists():
+                    return [str(zipbundler_in_venv)]
             except Exception:  # noqa: BLE001, S110
                 # Poetry command failed or venv path invalid - continue to error
                 pass
         msg = (
-            "shiv not found in PATH or poetry venv. "
-            "Ensure shiv is installed: poetry install --with dev"
+            "zipbundler not found. "
+            "Ensure zipbundler is installed: poetry install --with dev"
         )
         raise RuntimeError(msg)
 
     @staticmethod
     def ensure_standalone_script_up_to_date(
+        *,
         root: Path,
-        script_name: str,
+        script_name: str | None = None,
         package_name: str,
-        bundler_script: str,
+        bundler_script: str | None = None,
     ) -> Path:
         """Rebuild standalone script if missing or outdated.
 
         Args:
             root: Project root directory
-            script_name: Name of the standalone script (without .py extension)
+            script_name: Optional name of the standalone script (without .py extension).
+                If None, defaults to package_name.
             package_name: Name of the package (e.g., "apathetic_utils")
-            bundler_script: Path to the bundler script (relative to root)
+            bundler_script: Optional path to bundler script (relative to root).
+                If provided and exists, uses `python {bundler_script}`.
+                Otherwise, uses `python -m serger --config .serger.jsonc`.
 
         Returns:
             Path to the standalone script
         """
-        bin_path = root / "dist" / f"{script_name}.py"
+        # Use package_name as default if script_name not provided
+        actual_script_name = package_name if script_name is None else script_name
+        bin_path = root / "dist" / f"{actual_script_name}.py"
         src_dir = root / "src" / package_name
 
         # If the output file doesn't exist or is older than any source file → rebuild.
@@ -137,9 +157,46 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
                     break
 
         if needs_rebuild:
-            bundler_path = root / bundler_script
-            print(f"⚙️  Rebuilding standalone bundle (python {bundler_script})...")  # noqa: T201
-            subprocess.run([sys.executable, str(bundler_path)], check=True, cwd=root)  # noqa: S603
+            # Check if bundler_script is provided and exists
+            if bundler_script is not None:
+                bundler_path = root / bundler_script
+                if bundler_path.exists():
+                    print(  # noqa: T201
+                        f"⚙️  Rebuilding standalone bundle (python {bundler_script})..."
+                    )
+                    subprocess.run(  # noqa: S603
+                        [sys.executable, str(bundler_path)],
+                        check=True,
+                        cwd=root,
+                    )
+                    # force mtime update in case contents identical
+                    bin_path.touch()
+                    if not bin_path.exists():
+                        msg = "❌ Failed to generate standalone script."
+                        raise RuntimeError(msg)
+                    return bin_path
+
+            # Fall back to python -m serger
+            config_path = root / ".serger.jsonc"
+            if not config_path.exists():
+                msg = (
+                    "❌ Failed to generate standalone script: "
+                    f"serger config not found at {config_path}."
+                )
+                raise RuntimeError(msg)
+
+            print("⚙️  Rebuilding standalone bundle (python -m serger)...")  # noqa: T201
+            subprocess.run(  # noqa: S603
+                [
+                    sys.executable,
+                    "-m",
+                    "serger",
+                    "--config",
+                    str(config_path),
+                ],
+                check=True,
+                cwd=root,
+            )
             # force mtime update in case contents identical
             bin_path.touch()
             if not bin_path.exists():
@@ -150,21 +207,25 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
 
     @staticmethod
     def ensure_zipapp_up_to_date(
+        *,
         root: Path,
-        script_name: str,
+        script_name: str | None = None,
         package_name: str,
     ) -> Path:
         """Rebuild zipapp if missing or outdated.
 
         Args:
             root: Project root directory
-            script_name: Name of the zipapp (without .pyz extension)
+            script_name: Optional name of the zipapp (without .pyz extension).
+                If None, defaults to package_name.
             package_name: Name of the package (e.g., "apathetic_utils")
 
         Returns:
             Path to the zipapp
         """
-        zipapp_path = root / "dist" / f"{script_name}.pyz"
+        # Use package_name as default if script_name not provided
+        actual_script_name = package_name if script_name is None else script_name
+        zipapp_path = root / "dist" / f"{actual_script_name}.pyz"
         src_dir = root / "src" / package_name
 
         # If the output file doesn't exist or is older than any source file → rebuild.
@@ -177,15 +238,16 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
                     break
 
         if needs_rebuild:
-            shiv_cmd = ApatheticUtils_Internal_Runtime.find_shiv()
-            print("⚙️  Rebuilding zipapp (shiv)...")  # noqa: T201
+            zipbundler_cmd = ApatheticUtils_Internal_Runtime.find_zipbundler()
+            print("⚙️  Rebuilding zipapp (zipbundler)...")  # noqa: T201
             subprocess.run(  # noqa: S603
                 [
-                    shiv_cmd,
-                    "-c",
+                    *zipbundler_cmd,
+                    "-m",
                     package_name,
                     "-o",
                     str(zipapp_path),
+                    "-q",
                     ".",
                 ],
                 cwd=root,
@@ -201,10 +263,11 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
 
     @staticmethod
     def runtime_swap(
+        *,
         root: Path,
         package_name: str,
-        script_name: str,
-        bundler_script: str,
+        script_name: str | None = None,
+        bundler_script: str | None = None,
         mode: str | None = None,
     ) -> bool:
         """Pre-import hook — runs before any tests or plugins are imported.
@@ -212,15 +275,18 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
         Swaps in the appropriate runtime module based on RUNTIME_MODE:
         - installed (default): uses src/{package_name} (no swap needed)
         - singlefile: uses dist/{script_name}.py (serger-built single file)
-        - zipapp: uses dist/{script_name}.pyz (shiv-built zipapp)
+        - zipapp: uses dist/{script_name}.pyz (zipbundler-built zipapp)
 
         This ensures all test imports work transparently regardless of runtime mode.
 
         Args:
             root: Project root directory
             package_name: Name of the package (e.g., "apathetic_utils")
-            script_name: Name of the standalone script (without extension)
-            bundler_script: Path to the bundler script (relative to root)
+            script_name: Optional name of the standalone script (without extension).
+                If None, defaults to package_name.
+            bundler_script: Optional path to bundler script (relative to root).
+                If provided and exists, uses `python {bundler_script}`.
+                Otherwise, uses `python -m serger --config .serger.jsonc`.
             mode: Runtime mode override. If None, reads from RUNTIME_MODE env var.
 
         Returns:
@@ -270,21 +336,29 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
     def _load_singlefile_mode(
         root: Path,
         package_name: str,
-        script_name: str,
-        bundler_script: str,
+        script_name: str | None,
+        bundler_script: str | None,
         safe_trace: Any,
     ) -> bool:
         """Load standalone single-file script mode."""
         bin_path = ApatheticUtils_Internal_Runtime.ensure_standalone_script_up_to_date(
-            root, script_name, package_name, bundler_script
+            root=root,
+            script_name=script_name,
+            package_name=package_name,
+            bundler_script=bundler_script,
         )
 
         if not bin_path.exists():
+            if bundler_script is None:
+                hint_msg = "Hint: run the bundler (e.g. `poetry run poe build:script`)."
+            else:
+                hint_msg = (
+                    f"Hint: run the bundler (e.g. `python {bundler_script}` "
+                    f"or `poetry run poe build:script`)."
+                )
             xmsg = (
                 f"RUNTIME_MODE=singlefile but standalone script not found "
-                f"at {bin_path}.\n"
-                f"Hint: run the bundler (e.g. `python {bundler_script}` "
-                f"or `poetry run poe build:script`)."
+                f"at {bin_path}.\n{hint_msg}"
             )
             raise pytest.UsageError(xmsg)
 
@@ -316,12 +390,18 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
     def _load_zipapp_mode(
         root: Path,
         package_name: str,
-        script_name: str,
+        script_name: str | None,
         safe_trace: Any,
     ) -> bool:
-        """Load zipapp mode."""
+        """Load zipapp mode.
+
+        Handles zipbundler zipapps which store packages directly in the zip root.
+        Python's standard zipimporter can handle this structure directly.
+        """
         zipapp_path = ApatheticUtils_Internal_Runtime.ensure_zipapp_up_to_date(
-            root, script_name, package_name
+            root=root,
+            script_name=script_name,
+            package_name=package_name,
         )
 
         if not zipapp_path.exists():
@@ -331,17 +411,15 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
             )
             raise pytest.UsageError(xmsg)
 
-        # Add zipapp to sys.path so Python can import from it
+        # For zipbundler zipapps, use normal import
         zipapp_str = str(zipapp_path)
         if zipapp_str not in sys.path:
             sys.path.insert(0, zipapp_str)
 
         try:
-            # Import the module normally - Python's zipapp support handles this
             importlib.import_module(package_name)
             safe_trace(f"Loaded zipapp module from {zipapp_path}")
         except Exception as e:
-            # Fail fast with context; this is a config/runtime problem.
             error_name = type(e).__name__
             xmsg = (
                 f"Failed to import zipapp module from {zipapp_path}.\n"

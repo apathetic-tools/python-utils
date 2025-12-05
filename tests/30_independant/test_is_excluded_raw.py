@@ -215,8 +215,8 @@ def test_gitignore_double_star_backport_py310(
         mod_autils.apathetic_utils,
         "get_sys_version_info",
         lambda: fake_sys.version_info,
-        PROGRAM_PACKAGE,
-        PATCH_STITCH_HINTS,
+        package_prefix=PROGRAM_PACKAGE,
+        stitch_hints=PATCH_STITCH_HINTS,
     )
     result = mod_autils.is_excluded_raw(nested, ["dir/**/*.py"], root)
 

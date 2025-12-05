@@ -67,7 +67,7 @@ strip_common_prefix = apathetic_utils.strip_common_prefix
 # is accessed via the namespace class.
 # Use TypeAlias to help mypy understand this is a class type.
 if TYPE_CHECKING:
-    from .subprocess import ApatheticUtils_Internal_Subprocess
+    from .subprocess_utils import ApatheticUtils_Internal_Subprocess
 
     CapturedOutput: TypeAlias = ApatheticUtils_Internal_Subprocess.CapturedOutput
 else:
@@ -80,7 +80,7 @@ ensure_standalone_script_up_to_date = (
     apathetic_utils.ensure_standalone_script_up_to_date
 )
 ensure_zipapp_up_to_date = apathetic_utils.ensure_zipapp_up_to_date
-find_shiv = apathetic_utils.find_shiv
+find_zipbundler = apathetic_utils.find_zipbundler
 get_sys_version_info = apathetic_utils.get_sys_version_info
 is_running_under_pytest = apathetic_utils.is_running_under_pytest
 run_with_output = apathetic_utils.run_with_output
@@ -129,7 +129,7 @@ __all__ = [  # noqa: RUF022
     "detect_runtime_mode",
     "ensure_standalone_script_up_to_date",
     "ensure_zipapp_up_to_date",
-    "find_shiv",
+    "find_zipbundler",
     "get_sys_version_info",
     "is_running_under_pytest",
     "run_with_output",

@@ -1,4 +1,4 @@
-# src/apathetic_utils/subprocess.py
+# src/apathetic_utils/subprocess_utils.py
 """Subprocess utilities for testing."""
 
 from __future__ import annotations
@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import subprocess as _subprocess_module
+import subprocess
 import sys
 import tempfile
 from collections.abc import Iterator
@@ -22,7 +22,7 @@ class SubprocessResult:
 
     def __init__(
         self,
-        result: _subprocess_module.CompletedProcess[str],
+        result: subprocess.CompletedProcess[str],
     ) -> None:
         self.result = result
 
@@ -57,7 +57,7 @@ class SubprocessResultWithBypass:
 
     def __init__(
         self,
-        result: _subprocess_module.CompletedProcess[str],
+        result: subprocess.CompletedProcess[str],
         bypass_output: str,
     ) -> None:
         self.result = result
@@ -226,7 +226,7 @@ class ApatheticUtils_Internal_Subprocess:  # noqa: N801  # pyright: ignore[repor
             proc_env.update(env)
 
         # Run subprocess with normal capture
-        result = _subprocess_module.run(  # noqa: S603
+        result = subprocess.run(  # noqa: S603
             args,
             cwd=cwd,
             env=proc_env,
@@ -374,12 +374,12 @@ exec {shutil.which("python3") or sys.executable} {wrapper_path}
             # Run the shell command
             # Note: We can't use capture_output=True because we need pass_fds
             # which is incompatible with capture_output. We need manual PIPE setup.
-            result = _subprocess_module.run(  # noqa: S603, UP022
+            result = subprocess.run(  # noqa: S603, UP022
                 ["/bin/bash", "-c", shell_cmd],
                 cwd=cwd,
                 env=proc_env,
-                stdout=_subprocess_module.PIPE,  # This captures fd 3 output (bypass)
-                stderr=_subprocess_module.PIPE,  # This captures stderr
+                stdout=subprocess.PIPE,  # This captures fd 3 output (bypass)
+                stderr=subprocess.PIPE,  # This captures stderr
                 text=True,
                 check=check,
                 pass_fds=(write_pipe,),
@@ -403,7 +403,7 @@ exec {shutil.which("python3") or sys.executable} {wrapper_path}
             # - result.stderr contains stderr
 
             # Create a modified CompletedProcess with swapped stdout
-            modified_result = _subprocess_module.CompletedProcess(
+            modified_result = subprocess.CompletedProcess(
                 args=args,
                 returncode=result.returncode,
                 stdout=captured_stdout,  # Normal output from pipe

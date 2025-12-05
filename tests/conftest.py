@@ -18,7 +18,6 @@ import pytest
 
 import apathetic_utils
 from tests.utils.constants import (
-    BUNDLER_SCRIPT,
     PROGRAM_PACKAGE,
     PROGRAM_SCRIPT,
     PROJ_ROOT,
@@ -28,10 +27,9 @@ from tests.utils.constants import (
 # early jank hook - must run before importing apathetic_logging
 # so we get the stitched version if in singlefile/zipapp mode
 apathetic_utils.runtime_swap(
-    PROJ_ROOT,
-    PROGRAM_PACKAGE,
-    PROGRAM_SCRIPT,
-    BUNDLER_SCRIPT,
+    root=PROJ_ROOT,
+    package_name=PROGRAM_PACKAGE,
+    script_name=PROGRAM_SCRIPT,
 )
 
 # Import apathetic_logging AFTER runtime_swap so we get the correct version

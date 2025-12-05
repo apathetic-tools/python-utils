@@ -98,7 +98,7 @@ def dump_snapshot(*, include_full: bool = False) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_pytest_runtime_cache_integrity() -> None:
+def test_pytest_runtime_cache_integrity() -> None:  # noqa: PLR0912, PLR0915
     """Verify runtime mode swap correctly loads modules from expected locations.
 
     Ensures that modules imported at the top of test files resolve to the
@@ -113,15 +113,16 @@ def test_pytest_runtime_cache_integrity() -> None:
     mode = os.getenv("RUNTIME_MODE", "unknown")
     expected_script = DIST_ROOT / f"{PROGRAM_SCRIPT}.py"
 
-    # In singlefile mode, get the module from sys.modules to ensure we're using
-    # the version from the standalone script (which was loaded by runtime_swap)
-    # rather than the one imported at the top of this file (which might be from
-    # the installed package if it was imported before runtime_swap ran)
-    if mode == "singlefile" and f"{PROGRAM_PACKAGE}.runtime" in sys.modules:
-        # Use the module from sys.modules, which should be from the standalone script
+    # In singlefile/zipapp mode, get the module from sys.modules to ensure we're
+    # using the version from the standalone script/zipapp (which was loaded by
+    # runtime_swap) rather than the one imported at the top of this file (which
+    # might be from the installed package if it was imported before runtime_swap ran)
+    if mode in ("singlefile", "zipapp") and f"{PROGRAM_PACKAGE}.runtime" in sys.modules:
+        # Use the module from sys.modules, which should be from the standalone
+        # script/zipapp
         amod_utils_runtime_actual = sys.modules[f"{PROGRAM_PACKAGE}.runtime"]
         # Check __file__ directly - for stitched modules, should point to
-        # dist/apathetic_utils.py
+        # dist/apathetic_utils.py or dist/apathetic_utils.pyz
         utils_file_path = getattr(amod_utils_runtime_actual, "__file__", None)
         if utils_file_path:
             utils_file = str(utils_file_path)
@@ -131,7 +132,7 @@ def test_pytest_runtime_cache_integrity() -> None:
     else:
         # Otherwise, use the module imported at the top of the file
         amod_utils_runtime_actual = amod_utils_runtime
-        utils_file = str(inspect.getsourcefile(amod_utils_runtime_actual))
+        utils_file = str(inspect.getsourcefile(amod_utils_runtime_actual) or "")
     # --- execute ---
     safe_trace(f"RUNTIME_MODE={mode}")
     safe_trace(f"{PROGRAM_PACKAGE}.runtime  → {utils_file}")
@@ -185,15 +186,44 @@ def test_pytest_runtime_cache_integrity() -> None:
         assert runtime_mode != "standalone"
 
         # path peeks
-        assert utils_file.startswith(str(SRC_ROOT)), f"{utils_file} not in src/"
+        if mode == "zipapp":
+            # In zipapp mode, module should be from the zipapp
+            expected_zipapp = DIST_ROOT / f"{PROGRAM_SCRIPT}.pyz"
+            assert utils_file is not None, (
+                "utils_file should not be None in zipapp mode"
+            )
+            assert str(expected_zipapp) in str(utils_file), (
+                f"{utils_file} not from zipapp {expected_zipapp}"
+            )
+        else:
+            # In installed mode, module should be from src/
+            assert utils_file is not None, (
+                "utils_file should not be None in installed mode"
+            )
+            assert utils_file.startswith(str(SRC_ROOT)), f"{utils_file} not in src/"
 
     # --- verify both ---
     important_modules = list_important_modules()
     for submodule in important_modules:
         mod = importlib.import_module(f"{submodule}")
-        path = Path(inspect.getsourcefile(mod) or "")
+        # For zipapp modules, inspect.getsourcefile() may not work,
+        # so use __file__ directly
+        if mode == "zipapp":
+            mod_file = getattr(mod, "__file__", None)
+            if mod_file:
+                path = Path(mod_file)
+            else:
+                path = Path(inspect.getsourcefile(mod) or "")
+        else:
+            path = Path(inspect.getsourcefile(mod) or "")
         if mode == "singlefile":
             assert path.samefile(expected_script), f"{submodule} loaded from {path}"
+        elif mode == "zipapp":
+            # In zipapp mode, modules should be from the zipapp
+            expected_zipapp = DIST_ROOT / f"{PROGRAM_SCRIPT}.pyz"
+            assert str(expected_zipapp) in str(path), (
+                f"{submodule} not from zipapp: {path}"
+            )
         else:
             assert path.is_relative_to(SRC_ROOT), f"{submodule} not in src/: {path}"
 

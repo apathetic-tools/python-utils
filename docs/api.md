@@ -17,7 +17,7 @@ Complete API documentation for Apathetic Python Utils.
 | **Pattern Matching** | [`fnmatchcase_portable()`](#fnmatchcase_portable), [`is_excluded_raw()`](#is_excluded_raw) |
 | **Module Detection** | [`detect_packages_from_files()`](#detect_packages_from_files), [`find_all_packages_under_path()`](#find_all_packages_under_path) |
 | **System Detection** | [`is_ci()`](#is_ci), [`if_ci()`](#if_ci), [`is_running_under_pytest()`](#is_running_under_pytest), [`detect_runtime_mode()`](#detect_runtime_mode), [`capture_output()`](#capture_output), [`get_sys_version_info()`](#get_sys_version_info) |
-| **Runtime Utilities** | [`find_shiv()`](#find_shiv), [`ensure_standalone_script_up_to_date()`](#ensure_standalone_script_up_to_date), [`ensure_zipapp_up_to_date()`](#ensure_zipapp_up_to_date), [`runtime_swap()`](#runtime_swap) |
+| **Runtime Utilities** | [`find_zipbundler()`](#find_zipbundler), [`ensure_standalone_script_up_to_date()`](#ensure_standalone_script_up_to_date), [`ensure_zipapp_up_to_date()`](#ensure_zipapp_up_to_date), [`runtime_swap()`](#runtime_swap) |
 | **Subprocess Utilities** | [`run_with_output()`](#run_with_output), [`run_with_separated_output()`](#run_with_separated_output) |
 | **Text Processing** | [`plural()`](#plural), [`remove_path_in_error_message()`](#remove_path_in_error_message) |
 | **Type Utilities** | [`safe_isinstance()`](#safe_isinstance), [`literal_to_set()`](#literal_to_set), [`cast_hint()`](#cast_hint), [`schema_from_typeddict()`](#schema_from_typeddict) |
@@ -551,55 +551,60 @@ print(f"Python {version[0]}.{version[1]}.{version[2]}")
 
 ## Runtime Utilities
 
-### find_shiv
+### find_zipbundler
 
 ```python
-find_shiv() -> str
+find_zipbundler() -> list[str]
 ```
 
-Find the shiv executable.
+Find the zipbundler command.
 
-Searches for shiv in:
-1. System PATH
-2. Poetry virtual environment (if poetry is available)
+Returns a command list suitable for subprocess.run().
+Tries `python -m zipbundler` first, then `zipbundler` directly.
+
+Searches for zipbundler in:
+1. Python module path (via `python -m zipbundler`)
+2. System PATH
+3. Poetry virtual environment (if poetry is available)
 
 **Returns:**
-- `str`: Path to the shiv executable
+- `list[str]`: Command list (e.g., `["python", "-m", "zipbundler"]` or `["zipbundler"]`)
 
 **Raises:**
-- `RuntimeError`: If shiv is not found in PATH or poetry venv
+- `RuntimeError`: If zipbundler is not found
 
 **Example:**
 ```python
-from apathetic_utils import find_shiv
+from apathetic_utils import find_zipbundler
 
-shiv_path = find_shiv()
-# Returns: "/path/to/shiv" or "/path/to/venv/bin/shiv"
+zipbundler_cmd = find_zipbundler()
+# Returns: ["python", "-m", "zipbundler"] or ["zipbundler"] or ["/path/to/venv/bin/zipbundler"]
 ```
 
 ### ensure_standalone_script_up_to_date
 
 ```python
 ensure_standalone_script_up_to_date(
+    *,
     root: Path,
-    script_name: str,
+    script_name: str | None = None,
     package_name: str,
-    bundler_script: str
+    bundler_script: str | None = None
 ) -> Path
 ```
 
 Rebuild standalone script if missing or outdated.
 
-Checks if the standalone script exists and is newer than all source files. If not, rebuilds it using the bundler script.
+Checks if the standalone script exists and is newer than all source files. If not, rebuilds it using either the provided bundler script or the Poetry-installed `serger` module.
 
 **Parameters:**
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `root` | `Path` | Project root directory |
-| `script_name` | `str` | Name of the standalone script (without .py extension) |
+| `script_name` | `str \| None` | Optional name of the standalone script (without .py extension). If None, defaults to `package_name`. |
 | `package_name` | `str` | Name of the package (e.g., "apathetic_utils") |
-| `bundler_script` | `str` | Path to the bundler script (relative to root) |
+| `bundler_script` | `str \| None` | Optional path to bundler script (relative to root). If provided and exists, uses `python {bundler_script}`. Otherwise, uses `python -m serger --config .serger.jsonc`. |
 
 **Returns:**
 - `Path`: Path to the standalone script
@@ -612,11 +617,25 @@ Checks if the standalone script exists and is newer than all source files. If no
 from apathetic_utils import ensure_standalone_script_up_to_date
 from pathlib import Path
 
+# Using package_name as script_name (default)
 script_path = ensure_standalone_script_up_to_date(
-    Path("."),
-    "my_script",
-    "my_package",
-    "bin/serger.py"
+    root=Path("."),
+    package_name="my_package"
+)
+
+# Using a custom script name
+script_path = ensure_standalone_script_up_to_date(
+    root=Path("."),
+    script_name="my_script",
+    package_name="my_package"
+)
+
+# Using a local bundler script
+script_path = ensure_standalone_script_up_to_date(
+    root=Path("."),
+    script_name="my_script",
+    package_name="my_package",
+    bundler_script="bin/serger.py"
 )
 ```
 
@@ -624,22 +643,23 @@ script_path = ensure_standalone_script_up_to_date(
 
 ```python
 ensure_zipapp_up_to_date(
+    *,
     root: Path,
-    script_name: str,
+    script_name: str | None = None,
     package_name: str
 ) -> Path
 ```
 
 Rebuild zipapp if missing or outdated.
 
-Checks if the zipapp exists and is newer than all source files. If not, rebuilds it using shiv.
+Checks if the zipapp exists and is newer than all source files. If not, rebuilds it using zipbundler.
 
 **Parameters:**
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `root` | `Path` | Project root directory |
-| `script_name` | `str` | Name of the zipapp (without .pyz extension) |
+| `script_name` | `str \| None` | Optional name of the zipapp (without .pyz extension). If None, defaults to `package_name`. |
 | `package_name` | `str` | Name of the package (e.g., "apathetic_utils") |
 
 **Returns:**
@@ -653,10 +673,17 @@ Checks if the zipapp exists and is newer than all source files. If not, rebuilds
 from apathetic_utils import ensure_zipapp_up_to_date
 from pathlib import Path
 
+# Using package_name as script_name (default)
 zipapp_path = ensure_zipapp_up_to_date(
-    Path("."),
-    "my_script",
-    "my_package"
+    root=Path("."),
+    package_name="my_package"
+)
+
+# Using a custom script name
+zipapp_path = ensure_zipapp_up_to_date(
+    root=Path("."),
+    script_name="my_script",
+    package_name="my_package"
 )
 ```
 
@@ -664,10 +691,11 @@ zipapp_path = ensure_zipapp_up_to_date(
 
 ```python
 runtime_swap(
+    *,
     root: Path,
     package_name: str,
-    script_name: str,
-    bundler_script: str,
+    script_name: str | None = None,
+    bundler_script: str | None = None,
     mode: str | None = None
 ) -> bool
 ```
@@ -677,7 +705,7 @@ Pre-import hook — runs before any tests or plugins are imported.
 Swaps in the appropriate runtime module based on `RUNTIME_MODE`:
 - `installed` (default): uses `src/{package_name}` (no swap needed)
 - `singlefile`: uses `dist/{script_name}.py` (serger-built single file)
-- `zipapp`: uses `dist/{script_name}.pyz` (shiv-built zipapp)
+- `zipapp`: uses `dist/{script_name}.pyz` (zipbundler-built zipapp)
 
 This ensures all test imports work transparently regardless of runtime mode.
 
@@ -687,8 +715,8 @@ This ensures all test imports work transparently regardless of runtime mode.
 |-----------|------|-------------|
 | `root` | `Path` | Project root directory |
 | `package_name` | `str` | Name of the package (e.g., "apathetic_utils") |
-| `script_name` | `str` | Name of the standalone script (without extension) |
-| `bundler_script` | `str` | Path to the bundler script (relative to root) |
+| `script_name` | `str \| None` | Optional name of the standalone script (without extension). If None, defaults to `package_name`. |
+| `bundler_script` | `str \| None` | Optional path to bundler script (relative to root). If provided and exists, uses `python {bundler_script}`. Otherwise, uses `python -m serger --config .serger.jsonc`. |
 | `mode` | `str \| None` | Runtime mode override. If None, reads from `RUNTIME_MODE` env var. |
 
 **Returns:**
@@ -703,12 +731,28 @@ from apathetic_utils import runtime_swap
 from pathlib import Path
 
 # In pytest conftest.py or similar
+# Using package_name as script_name (default), Poetry-installed serger
 runtime_swap(
-    Path(__file__).parent.parent,
-    "my_package",
-    "my_script",
-    "bin/serger.py",
+    root=Path(__file__).parent.parent,
+    package_name="my_package",
     mode="singlefile"  # or None to read from RUNTIME_MODE env var
+)
+
+# Using a custom script name
+runtime_swap(
+    root=Path(__file__).parent.parent,
+    package_name="my_package",
+    script_name="my_script",
+    mode="singlefile"
+)
+
+# Using a local bundler script
+runtime_swap(
+    root=Path(__file__).parent.parent,
+    package_name="my_package",
+    script_name="my_script",
+    bundler_script="bin/serger.py",
+    mode="singlefile"
 )
 ```
 
@@ -1156,9 +1200,11 @@ patch_everywhere(
     mod_env: ModuleType | Any,
     func_name: str,
     replacement_func: Callable[..., object],
-    package_prefix: str,
+    *,
+    package_prefix: str | Sequence[str],
     stitch_hints: set[str] | None = None,
-    create_if_missing: bool = False
+    create_if_missing: bool = False,
+    caller_func_name: str | None = None
 ) -> None
 ```
 
@@ -1177,9 +1223,10 @@ Works in both package and stitched single-file runtimes. Walks `sys.modules` onc
 | `mod_env` | `ModuleType \| Any` | Module or object containing the function to patch |
 | `func_name` | `str` | Name of the function to patch |
 | `replacement_func` | `Callable[..., object]` | Function to replace the original with |
-| `package_prefix` | `str` | Package name prefix to filter modules (e.g., "apathetic_utils") |
-| `stitch_hints` | `set[str] \| None` | Set of path hints to identify stitched modules. Defaults to `{"/dist/", "standalone"}`. |
+| `package_prefix` | `str \| Sequence[str]` | Package name prefix(es) to filter modules. Can be a single string (e.g., "apathetic_utils") or a sequence of strings (e.g., ["apathetic_utils", "my_package"]) to patch across multiple packages. |
+| `stitch_hints` | `set[str] \| None` | Set of path hints to identify stitched modules. Defaults to `{"/dist/", "standalone"}`. When providing custom hints, you must be certain of the path attributes of your stitched file, as this uses substring matching on the module's `__file__` path. This is a heuristic fallback when identity checks fail (e.g., when modules are reloaded). |
 | `create_if_missing` | `bool` | If True, create the attribute if it doesn't exist. If False (default), raise TypeError if the function doesn't exist. |
+| `caller_func_name` | `str \| None` | If provided, only patch `__globals__` for this specific function to handle direct calls. If None (default), patch `__globals__` for all functions in stitched modules that reference the original function. |
 
 **Raises:**
 - `TypeError`: If the function doesn't exist and `create_if_missing=False`
@@ -1199,7 +1246,7 @@ def test_patch_function(monkeypatch):
         my_module,
         "original_func",
         mock_func,
-        "my_module"
+        package_prefix="my_module"
     )
 ```
 

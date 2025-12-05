@@ -1,13 +1,13 @@
 # tests/90_integration/test_zipapp_import_semantics.py
 """Integration tests for zipapp import semantics.
 
-These tests verify that when the project is built using shiv (zipapp),
+These tests verify that when the project is built using zipbundler (zipapp),
 the import semantics work correctly:
 - Can import and use the module from zipapp format
 - Exported constants and classes are accessible
 
 These are project-specific tests that verify our code works correctly
-when built with shiv (not testing shiv itself).
+when built with zipbundler (not testing zipbundler itself).
 """
 
 import subprocess
@@ -27,13 +27,13 @@ __runtime_mode__ = "zipapp"
 def test_zipapp_import_semantics() -> None:
     """Test that zipapp builds maintain correct import semantics.
 
-    This test verifies our project code works correctly when built with shiv:
-    1. Builds apathetic_utils as a zipapp using shiv (from project root)
+    This test verifies our project code works correctly when built with zipbundler:
+    1. Builds apathetic_utils as a zipapp using zipbundler (from project root)
     2. Imports from the zipapp and verifies import semantics work correctly:
        - Can import and use the module from zipapp format
        - Exported constants and classes are accessible
 
-    This verifies our project configuration and code work correctly with shiv.
+    This verifies our project configuration and code work correctly with zipbundler.
     """
     # --- setup ---
     # Build the project's zipapp
@@ -43,14 +43,15 @@ def test_zipapp_import_semantics() -> None:
     zipapp_file.parent.mkdir(parents=True, exist_ok=True)
 
     # --- execute: build zipapp ---
-    shiv_cmd = apathetic_utils.find_shiv()
+    zipbundler_cmd = apathetic_utils.find_zipbundler()
     result = subprocess.run(  # noqa: S603
         [
-            shiv_cmd,
-            "-c",
+            *zipbundler_cmd,
+            "-m",
             "apathetic_utils",
             "-o",
             str(zipapp_file),
+            "-q",
             ".",
         ],
         cwd=PROJ_ROOT,
@@ -61,7 +62,7 @@ def test_zipapp_import_semantics() -> None:
 
     if result.returncode != 0:
         pytest.fail(
-            f"Shiv failed with return code {result.returncode}.\n"
+            f"zipbundler failed with return code {result.returncode}.\n"
             f"stdout: {result.stdout}\n"
             f"stderr: {result.stderr}"
         )

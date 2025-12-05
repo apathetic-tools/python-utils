@@ -5,10 +5,10 @@ from __future__ import annotations
 
 import os
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from contextlib import suppress
 from pathlib import Path
-from types import ModuleType
+from types import FunctionType, ModuleType
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -170,14 +170,16 @@ class ApatheticUtils_Internal_Testing:  # noqa: N801  # pyright: ignore[reportUn
                     raise AssertionError(msg)
 
     @staticmethod
-    def patch_everywhere(  # noqa: C901, PLR0912
+    def patch_everywhere(  # noqa: C901, PLR0912, PLR0915
         mp: pytest.MonkeyPatch,
         mod_env: ModuleType | Any,
         func_name: str,
         replacement_func: Callable[..., object],
-        package_prefix: str,
+        *,
+        package_prefix: str | Sequence[str],
         stitch_hints: set[str] | None = None,
-        create_if_missing: bool = False,  # noqa: FBT001, FBT002
+        create_if_missing: bool = False,
+        caller_func_name: str | None = None,
     ) -> None:
         """Replace a function everywhere it was imported.
 
@@ -192,12 +194,21 @@ class ApatheticUtils_Internal_Testing:  # noqa: N801  # pyright: ignore[reportUn
             mod_env: Module or object containing the function to patch
             func_name: Name of the function to patch
             replacement_func: Function to replace the original with
-            package_prefix: Package name prefix to filter modules
-                (e.g., "apathetic_utils")
+            package_prefix: Package name prefix(es) to filter modules.
+                Can be a single string (e.g., "apathetic_utils") or a sequence
+                of strings (e.g., ["apathetic_utils", "my_package"]) to patch
+                across multiple packages.
             stitch_hints: Set of path hints to identify stitched modules.
-                Defaults to {"/dist/", "standalone"}.
+                Defaults to {"/dist/", "standalone"}. When providing custom
+                hints, you must be certain of the path attributes of your
+                stitched file, as this uses substring matching on the module's
+                __file__ path. This is a heuristic fallback when identity
+                checks fail (e.g., when modules are reloaded).
             create_if_missing: If True, create the attribute if it doesn't exist.
                 If False (default), raise TypeError if the function doesn't exist.
+            caller_func_name: If provided, only patch __globals__ for this specific
+                function. If None (default), patch __globals__ for all functions in
+                the module that reference the original function.
         """
         from apathetic_logging import safeTrace  # noqa: PLC0415
 
@@ -245,6 +256,22 @@ class ApatheticUtils_Internal_Testing:  # noqa: N801  # pyright: ignore[reportUn
         else:
             safeTrace(f"Created and patched {mod_name}.{func_name}")
 
+        # Patch direct function calls via __globals__
+        # Module-level functions share the same __globals__ dict (the module's
+        # __dict__). We need to patch functions' __globals__ to intercept direct
+        # calls (e.g., func() vs mod.func()). This works in both stitched and
+        # non-stitched modes.
+        if func_existed and isinstance(mod_env, ModuleType) and func is not None:
+            _patch_globals_for_direct_calls(
+                mp=mp,
+                mod=mod_env,
+                func_name=func_name,
+                original_func=func,
+                replacement_func=replacement_func,
+                safeTrace=safeTrace,
+                caller_func_name=caller_func_name,
+            )
+
         patched_ids: set[int] = set()
 
         for m in list(sys.modules.values()):
@@ -257,7 +284,11 @@ class ApatheticUtils_Internal_Testing:  # noqa: N801  # pyright: ignore[reportUn
 
             # skip irrelevant stdlib or third-party modules for performance
             name = getattr(m, "__name__", "")
-            if not name.startswith(package_prefix):
+            if isinstance(package_prefix, str):
+                prefixes: Sequence[str] = (package_prefix,)
+            else:
+                prefixes = package_prefix
+            if not any(name.startswith(prefix) for prefix in prefixes):
                 continue
 
             did_patch = False
@@ -270,12 +301,32 @@ class ApatheticUtils_Internal_Testing:  # noqa: N801  # pyright: ignore[reportUn
                         mp.setattr(m, k, replacement_func)
                         did_patch = True
 
-            # 2) Single-file case: reloaded stitched modules
+            # 2) Single-file/zipapp case: reloaded stitched modules or zipapp modules
             #    whose __file__ path matches heuristic
             path = getattr(m, "__file__", "") or ""
-            if any(h in path for h in stitch_hints) and hasattr(m, func_name):
+            # Check for stitched modules (path contains hints) or zipapp modules
+            is_stitched_or_zipapp = (
+                any(h in path for h in stitch_hints)
+                or ".pyz/" in path
+                or path.endswith(".pyz")
+            )
+            if is_stitched_or_zipapp and hasattr(m, func_name):
                 mp.setattr(m, func_name, replacement_func)
+                # Also patch __dict__ directly for zipapp modules to ensure it's updated
+                if ".pyz/" in path or path.endswith(".pyz"):
+                    m.__dict__[func_name] = replacement_func
                 did_patch = True
+                # Also patch __globals__ for direct function calls
+                if func_existed and func is not None:
+                    _patch_globals_for_direct_calls(
+                        mp=mp,
+                        mod=m,
+                        func_name=func_name,
+                        original_func=func,
+                        replacement_func=replacement_func,
+                        safeTrace=safeTrace,
+                        caller_func_name=caller_func_name,
+                    )
 
             if did_patch and id(m) not in patched_ids:
                 safeTrace(
@@ -283,3 +334,193 @@ class ApatheticUtils_Internal_Testing:  # noqa: N801  # pyright: ignore[reportUn
                     f"(path={ApatheticUtils_Internal_Testing._short_path(path)})"
                 )
                 patched_ids.add(id(m))
+
+
+def _patch_single_caller_globals(
+    *,
+    mod: ModuleType,
+    caller_func_name: str,
+    func_name: str,
+    original_func: Callable[..., object],
+    replacement_func: Callable[..., object],
+    changes_to_restore: list[tuple[dict[str, object], str, object]],
+) -> int:
+    """Patch __globals__ for a single caller function.
+
+    Returns:
+        Number of functions patched (0 or 1).
+    """
+    caller_func = getattr(mod, caller_func_name, None)
+    if caller_func is not None and isinstance(caller_func, FunctionType):
+        func_globals = getattr(caller_func, "__globals__", None)
+        if (
+            func_globals is not None
+            and func_name in func_globals
+            and func_globals[func_name] is original_func
+        ):
+            original_value = func_globals[func_name]
+            func_globals[func_name] = replacement_func
+            changes_to_restore.append((func_globals, func_name, original_value))
+            return 1
+    return 0
+
+
+def _get_function_to_check(attr_value: object) -> FunctionType | None:
+    """Extract FunctionType from attribute value (handles static methods).
+
+    Returns:
+        FunctionType if found, None otherwise.
+    """
+    if isinstance(attr_value, FunctionType):
+        return attr_value
+    if hasattr(attr_value, "__func__"):
+        func_to_check = getattr(attr_value, "__func__", None)
+        if isinstance(func_to_check, FunctionType):
+            return func_to_check
+    return None
+
+
+def _should_patch_globals(
+    func_globals: dict[str, object],
+    func_name: str,
+    original_func: Callable[..., object],
+    *,
+    is_zipapp: bool,
+) -> bool:
+    """Check if a function's __globals__ should be patched.
+
+    Returns:
+        True if the globals should be patched, False otherwise.
+    """
+    if func_name not in func_globals:
+        return False
+    should_patch = func_globals[func_name] is original_func
+    if not should_patch and is_zipapp:
+        # In zipapp mode, patch by name if the function exists
+        should_patch = True
+    return should_patch
+
+
+def _patch_all_functions_globals(
+    *,
+    mod: ModuleType,
+    func_name: str,
+    original_func: Callable[..., object],
+    replacement_func: Callable[..., object],
+    changes_to_restore: list[tuple[dict[str, object], str, object]],
+) -> int:
+    """Patch __globals__ for all module functions referencing the original function.
+
+    Returns:
+        Number of functions patched.
+    """
+    mod_file = getattr(mod, "__file__", "") or ""
+    is_zipapp = ".pyz/" in mod_file or mod_file.endswith(".pyz")
+    globals_patched_count = 0
+
+    for attr_value in mod.__dict__.values():
+        func_to_check = _get_function_to_check(attr_value)
+        if func_to_check is None:
+            continue
+
+        func_globals = getattr(func_to_check, "__globals__", None)
+        if func_globals is None:
+            continue
+
+        if _should_patch_globals(
+            func_globals, func_name, original_func, is_zipapp=is_zipapp
+        ):
+            original_value = func_globals[func_name]
+            func_globals[func_name] = replacement_func
+            changes_to_restore.append((func_globals, func_name, original_value))
+            globals_patched_count += 1
+
+    return globals_patched_count
+
+
+def _setup_globals_restore(
+    *,
+    mp: pytest.MonkeyPatch,
+    changes_to_restore: list[tuple[dict[str, object], str, object]],
+) -> None:
+    """Set up restoration of __globals__ changes when monkeypatch cleans up."""
+
+    def restore_globals() -> None:
+        for func_globals_dict, name, original_val in changes_to_restore:
+            func_globals_dict[name] = original_val
+
+    original_undo = mp.undo
+
+    def undo_with_globals_restore() -> None:
+        restore_globals()
+        original_undo()
+
+    mp.undo = undo_with_globals_restore  # type: ignore[method-assign]
+
+
+def _patch_globals_for_direct_calls(
+    *,
+    mp: pytest.MonkeyPatch,
+    mod: ModuleType,
+    func_name: str,
+    original_func: Callable[..., object],
+    replacement_func: Callable[..., object],
+    safeTrace: Callable[..., None],  # noqa: N803
+    caller_func_name: str | None = None,
+) -> None:
+    """Patch __globals__ for functions in a module referencing the original function.
+
+    This enables patching direct function calls (e.g., func() vs mod.func()). Python
+    functions look up names in their __globals__ dict at runtime, so patching the
+    function in each function's __globals__ intercepts direct calls. Works in both
+    stitched and non-stitched modes.
+
+    Tracks all __globals__ changes and ensures they are restored when monkeypatch
+    cleans up by wrapping monkeypatch.undo() to restore values before undoing
+    other patches.
+
+    Args:
+        mp: pytest.MonkeyPatch instance for tracking changes and cleanup
+        mod: The module to search for functions
+        func_name: Name of the function being patched
+        original_func: The original function object (to find references)
+        replacement_func: The replacement function
+        safeTrace: Logging function for trace messages
+        caller_func_name: If provided, only patch this specific function's __globals__.
+            If None, patch all functions that reference the original function.
+    """
+    changes_to_restore: list[tuple[dict[str, object], str, object]] = []
+
+    if caller_func_name is not None:
+        globals_patched_count = _patch_single_caller_globals(
+            mod=mod,
+            caller_func_name=caller_func_name,
+            func_name=func_name,
+            original_func=original_func,
+            replacement_func=replacement_func,
+            changes_to_restore=changes_to_restore,
+        )
+    else:
+        globals_patched_count = _patch_all_functions_globals(
+            mod=mod,
+            func_name=func_name,
+            original_func=original_func,
+            replacement_func=replacement_func,
+            changes_to_restore=changes_to_restore,
+        )
+
+    if changes_to_restore:
+        _setup_globals_restore(mp=mp, changes_to_restore=changes_to_restore)
+
+    if globals_patched_count > 0:
+        mod_name = getattr(mod, "__name__", "unknown")
+        if caller_func_name:
+            safeTrace(
+                f"  patched __globals__ for {caller_func_name} "
+                f"in {mod_name} for direct calls"
+            )
+        else:
+            safeTrace(
+                f"  patched __globals__ for {globals_patched_count} function(s) "
+                f"in {mod_name} for direct calls"
+            )

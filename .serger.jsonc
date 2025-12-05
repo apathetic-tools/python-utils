@@ -30,5 +30,8 @@
 
   // Output file path (relative to project root)
   // This will be the final single-file executable
-  "out": "dist/apathetic_utils.py"
+  "out": "dist/apathetic_utils.py",
+
+  // Global configuration defaults
+  "log_level": "warning"
 }

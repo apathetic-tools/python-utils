@@ -28,7 +28,7 @@ from .paths import (
 from .runtime import (
     ApatheticUtils_Internal_Runtime,
 )
-from .subprocess import (
+from .subprocess_utils import (
     ApatheticUtils_Internal_Subprocess,
 )
 from .testing import (

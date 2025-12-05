@@ -120,7 +120,7 @@ This decision prioritizes **user convenience and ecosystem integration** while m
 
 <br/><br/>
 
-## 📦 Choose `shiv` for Zipapp Support
+## 📦 Choose `zipbundler` for Zipapp Support
 <a id="dec13"></a>*DEC 13 — 2025-11-24*
 
 ### Context
@@ -133,18 +133,23 @@ The project needed a tool that **automatically bundles dependencies** while prod
 
 | Option | Pros | Cons |
 |--------|------|------|
-| **`shiv`** | ✅ Automatic dependency resolution and bundling<br>✅ Handles entry points and console scripts<br>✅ Produces executable `.pyz` files<br>✅ Integrates with `pyproject.toml`<br>✅ Active maintenance and Python 3.10+ support | ⚠️ Additional dependency for build process |
+| **`zipbundler`** | ✅ Automatic dependency resolution and bundling<br>✅ Handles entry points and console scripts<br>✅ Produces executable `.pyz` files<br>✅ Integrates with `pyproject.toml`<br>✅ Stores packages at zip root (simpler structure)<br>✅ Active maintenance and Python 3.10+ support | ⚠️ Additional dependency for build process |
+| **`shiv`** | ✅ Automatic dependency resolution and bundling<br>✅ Handles entry points and console scripts<br>✅ Produces executable `.pyz` files<br>✅ Integrates with `pyproject.toml` | ⚠️ Stores packages in `site-packages/` (more complex structure)<br>⚠️ Additional dependency for build process |
 | **Standard library `zipapp`** | ✅ No external dependencies<br>✅ Built into Python | ❌ Manual dependency management required<br>❌ No automatic entry point handling<br>❌ More complex build scripts needed |
-| **`pex`** | ✅ Similar functionality to shiv<br>✅ Mature tool with good documentation | ⚠️ Slightly more complex configuration<br>⚠️ Less Python-native feel |
+| **`pex`** | ✅ Similar functionality to zipbundler/shiv<br>✅ Mature tool with good documentation | ⚠️ Slightly more complex configuration<br>⚠️ Less Python-native feel |
 | **Custom build script** | ✅ Full control over bundling process | ❌ Significant development and maintenance overhead<br>❌ Risk of missing edge cases in dependency resolution |
 
 ### Decision
 
-Choose **`shiv`** for zipapp creation.  
+Choose **`zipbundler`** for zipapp creation.  
 It provides **automatic dependency resolution and bundling** — reading dependencies from `pyproject.toml` and creating a self-contained `.pyz` file that includes all required packages.  
-Shiv's integration with Python packaging standards and its straightforward CLI make it ideal for the project's goal of **minimizing build complexity** while maintaining portability.
+Zipbundler's integration with Python packaging standards, straightforward CLI, and simpler zip structure (packages at root rather than in `site-packages/`) make it ideal for the project's goal of **minimizing build complexity** while maintaining portability.
 
 This choice supports the three-tier distribution model by providing a reliable, automated way to produce zipapp distributions without manual dependency management or complex build scripts.
+
+### Follow-up and Evolution (*2025-12-03*)
+
+The project previously used `shiv` but switched to `zipbundler` for its simpler zip structure, which allows Python's standard `zipimporter` to handle imports directly without custom loading logic.
 
 
 <br/><br/>
