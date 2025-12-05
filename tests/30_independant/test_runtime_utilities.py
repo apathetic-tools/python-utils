@@ -269,11 +269,11 @@ def test_runtime_swap_with_script_name() -> None:
         root=PROJ_ROOT,
         package_name="apathetic_utils",
         script_name="custom_script",
-        mode="installed",  # Use installed mode to avoid building
+        mode="package",  # Use package mode to avoid building
     )
 
     # --- verify ---
-    assert result is False  # Installed mode returns False
+    assert result is False  # Package mode returns False
 
 
 def test_runtime_swap_without_script_name() -> None:
@@ -283,11 +283,11 @@ def test_runtime_swap_without_script_name() -> None:
         root=PROJ_ROOT,
         package_name="apathetic_utils",
         # script_name=None (default)
-        mode="installed",  # Use installed mode to avoid building
+        mode="package",  # Use package mode to avoid building
     )
 
     # --- verify ---
-    assert result is False  # Installed mode returns False
+    assert result is False  # Package mode returns False
 
 
 @pytest.mark.skip(
@@ -296,11 +296,11 @@ def test_runtime_swap_without_script_name() -> None:
         "Remove this marker once the latest serger release is available."
     ),
 )
-def test_runtime_swap_singlefile_without_script_name(
+def test_runtime_swap_stitched_without_script_name(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Test runtime_swap in singlefile mode defaults script_name to package_name."""
+    """Test runtime_swap in stitched mode defaults script_name to package_name."""
     # --- setup ---
     pkg_dir = tmp_path / "src" / "testpkg"
     pkg_dir.mkdir(parents=True)
@@ -323,7 +323,7 @@ def test_runtime_swap_singlefile_without_script_name(
         root=tmp_path,
         package_name="testpkg",
         # script_name=None (default)
-        mode="singlefile",
+        mode="stitched",
     )
 
     # --- verify ---

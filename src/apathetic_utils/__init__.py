@@ -9,8 +9,8 @@ if TYPE_CHECKING:
 
 # Get reference to the namespace class
 # In stitched mode: class is already defined in namespace.py (executed before this)
-# In installed mode: import from namespace module
-_apathetic_utils_is_standalone = globals().get("__STANDALONE__", False)
+# In package mode: import from namespace module
+_apathetic_utils_is_standalone = globals().get("__STITCHED__", False)
 
 if _apathetic_utils_is_standalone:
     # Stitched mode: class already defined in namespace.py
@@ -18,15 +18,15 @@ if _apathetic_utils_is_standalone:
     _apathetic_utils_raw = globals().get("apathetic_utils")
     if _apathetic_utils_raw is None:
         # Fallback: should not happen, but handle gracefully
-        msg = "apathetic_utils class not found in standalone mode"
+        msg = "apathetic_utils class not found in stitched mode"
         raise RuntimeError(msg)
     # Type cast to help mypy understand this is the apathetic_utils class
     # The import gives us type[apathetic_utils], so cast to
     # type[_apathetic_utils_class]
     apathetic_utils = cast("type[_apathetic_utils_class]", _apathetic_utils_raw)
 else:
-    # Installed mode: import from namespace module
-    # This block is only executed in installed mode, not in standalone builds
+    # Package mode: import from namespace module
+    # This block is only executed in package mode, not in stitched builds
     from .namespace import apathetic_utils
 
     # Ensure the else block is not empty (build script may remove import)
@@ -37,7 +37,7 @@ else:
 
 # Note: In embedded builds, __init__.py is excluded from the stitch,
 # so this code never runs and no exports happen (only the class is available).
-# In singlefile/installed builds, __init__.py is included, so exports happen.
+# In stitched/package builds, __init__.py is included, so exports happen.
 
 # CI
 CI_ENV_VARS = apathetic_utils.CI_ENV_VARS

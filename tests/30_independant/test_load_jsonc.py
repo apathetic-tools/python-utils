@@ -1,5 +1,5 @@
 # tests/0_independant/test_load_jsonc.py
-"""Tests for package.utils (package and standalone versions)."""
+"""Tests for package.utils (package and stitched versions)."""
 
 from pathlib import Path
 

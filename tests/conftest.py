@@ -3,10 +3,10 @@
 
 Each pytest run now targets a single runtime mode:
 - Normal mode (default): uses src/apathetic_utils
-- Standalone mode: uses dist/apathetic_utils.py when RUNTIME_MODE=singlefile
+- Stitched mode: uses dist/apathetic_utils.py when RUNTIME_MODE=stitched
 - Zipapp mode: uses dist/apathetic_utils.pyz when RUNTIME_MODE=zipapp
 
-Switch mode with: RUNTIME_MODE=singlefile pytest or RUNTIME_MODE=zipapp pytest
+Switch mode with: RUNTIME_MODE=stitched pytest or RUNTIME_MODE=zipapp pytest
 """
 
 import logging
@@ -25,7 +25,7 @@ from tests.utils.constants import (
 
 
 # early jank hook - must run before importing apathetic_logging
-# so we get the stitched version if in singlefile/zipapp mode
+# so we get the stitched version if in stitched/zipapp mode
 apathetic_utils.runtime_swap(
     root=PROJ_ROOT,
     package_name=PROGRAM_PACKAGE,
@@ -34,9 +34,9 @@ apathetic_utils.runtime_swap(
 
 # Import apathetic_logging AFTER runtime_swap so we get the correct version
 # In stitched builds, apathetic_logging is registered in sys.modules
-# by the stitched file. In installed mode, we import it normally.
+# by the stitched file. In package mode, we import it normally.
 if "apathetic_logging" in sys.modules:
-    # Use the version from sys.modules (could be stitched or installed)
+    # Use the version from sys.modules (could be stitched or package)
     import apathetic_logging as mod_logging
 
     mod_logging_source = getattr(
@@ -108,7 +108,7 @@ def reset_logger_class() -> Generator[None, None, None]:
 
 
 def _mode() -> str:
-    return os.getenv("RUNTIME_MODE", "installed")
+    return os.getenv("RUNTIME_MODE", "package")
 
 
 def _filter_debug_tests(
@@ -215,7 +215,7 @@ def pytest_collection_modifyitems(
 def pytest_unconfigure(config: pytest.Config) -> None:
     """Print summary of included runtime-specific tests at the end."""
     included_map: dict[str, int] = getattr(config, "_included_map", {})
-    mode = getattr(config, "_runtime_mode", "installed")
+    mode = getattr(config, "_runtime_mode", "package")
 
     if not included_map:
         return

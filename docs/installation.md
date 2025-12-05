@@ -31,7 +31,7 @@ This installation method provides:
 
 ## Alternative: Single-File Distribution
 
-For projects that prefer a single-file dependency, we also distribute a standalone `apathetic_utils.py` file that you can download directly from [releases](https://github.com/apathetic-tools/python-utils/releases).
+For projects that prefer a single-file dependency, we also distribute a stitched `apathetic_utils.py` file that you can download directly from [releases](https://github.com/apathetic-tools/python-utils/releases).
 
 ### Download and Use
 

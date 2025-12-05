@@ -70,5 +70,5 @@ class apathetic_utils(  # noqa: N801
 
 
 # Note: All exports are handled in __init__.py
-# - For library builds (installed/singlefile): __init__.py is included, exports happen
+# - For library builds (package/stitched): __init__.py is included, exports happen
 # - For embedded builds: __init__.py is excluded, no exports (only class available)

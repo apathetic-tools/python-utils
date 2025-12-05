@@ -19,7 +19,7 @@ This file provides a quick reference for common development tasks.
 | `poetry run poe check:fix` | Auto-fix issues, re-format, type-check, and re-test. |
 | `poetry run poe check` | Run linting (`ruff`), type checks (`mypy`), and tests (`pytest`). |
 | `poetry run poe fix` | Run all auto-fixers (`ruff`). |
-| `poetry run poe build:script` | Bundle the project into a single portable script in `dist/`. |
+| `poetry run poe build:stitched` | Bundle the project into a single portable script in `dist/`. |
 
 ### Setup
 

@@ -199,7 +199,7 @@ class ApatheticUtils_Internal_Testing:  # noqa: N801  # pyright: ignore[reportUn
                 of strings (e.g., ["apathetic_utils", "my_package"]) to patch
                 across multiple packages.
             stitch_hints: Set of path hints to identify stitched modules.
-                Defaults to {"/dist/", "standalone"}. When providing custom
+                Defaults to {"/dist/", "stitched"}. When providing custom
                 hints, you must be certain of the path attributes of your
                 stitched file, as this uses substring matching on the module's
                 __file__ path. This is a heuristic fallback when identity
@@ -213,7 +213,7 @@ class ApatheticUtils_Internal_Testing:  # noqa: N801  # pyright: ignore[reportUn
         from apathetic_logging import safeTrace  # noqa: PLC0415
 
         if stitch_hints is None:
-            stitch_hints = {"/dist/", "standalone"}
+            stitch_hints = {"/dist/", "stitched"}
 
         # --- Sanity checks ---
         func = getattr(mod_env, func_name, None)

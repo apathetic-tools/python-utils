@@ -302,7 +302,7 @@ class ApatheticUtils_Internal_Subprocess:  # noqa: N801  # pyright: ignore[repor
 
         # Create Python wrapper script that modifies sys.__stdout__ and runs command
         # For Python commands, we exec the script code in this process
-        # Use __import__ to avoid namespace collisions in stitched standalone mode
+        # Use __import__ to avoid namespace collisions in stitched mode
         wrapper_script = """import sys
 import os
 import json

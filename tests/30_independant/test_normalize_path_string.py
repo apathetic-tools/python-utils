@@ -1,5 +1,5 @@
 # tests/0_independant/test_normalize_path_string.py
-"""Tests for package.utils (package and standalone versions)."""
+"""Tests for package.utils (package and stitched versions)."""
 
 import pytest
 

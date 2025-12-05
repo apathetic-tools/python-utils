@@ -18,7 +18,7 @@ PROGRAM_CONFIG = "apathetic_utils"
 
 # Bundler command hint (used for help messages in runtime utilities)
 # The actual build is performed via `python -m serger` using .serger.jsonc.
-BUNDLER_SCRIPT = "python -m serger"
+STITCH_SCRIPT = "python -m serger"
 
 # Stitch hints for patch_everywhere (paths that indicate stitched modules)
-PATCH_STITCH_HINTS = {"/dist/", "standalone", f"{PROGRAM_SCRIPT}.py"}
+PATCH_STITCH_HINTS = {"/dist/", "stitched", f"{PROGRAM_SCRIPT}.py"}

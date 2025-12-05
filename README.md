@@ -7,7 +7,7 @@
 📘 **[Roadmap](./ROADMAP.md)** · 📝 **[Release Notes](https://github.com/apathetic-tools/python-utils/releases)**
 
 **Grab bag of helpers for Apathetic projects.**  
-*When stdlib just isn't enough.*
+*When stdlib is almost enough.*
 
 *Apathetic Python Utils* provides a lightweight, dependency-free collection of utility functions designed for CLI tools. It includes helpers for file loading, path manipulation, system detection, text processing, type checking, pattern matching, and more.
 
@@ -29,7 +29,7 @@ pyproject = load_toml(Path("pyproject.toml"))
 if is_ci():
     print("Running in CI")
 
-# Detect runtime mode (installed, standalone, zipapp, frozen)
+# Detect runtime mode (package, stitched, zipapp, frozen)
 mode = detect_runtime_mode("my_package")
 print(f"Running in {mode} mode")
 ```
@@ -58,7 +58,7 @@ For installation guides, API reference, examples, and more, visit our documentat
 - 🔍 **Pattern matching** — Portable glob pattern matching with recursive `**` support
 - 🧩 **Module detection** — Detect Python packages from file paths
 - 🧪 **System detection** — Detect CI environments, pytest execution, and runtime modes
-- ⚙️ **Runtime utilities** — Build and test utilities for standalone scripts and zipapps
+- ⚙️ **Runtime utilities** — Build and test utilities for stitched scripts and zipapps
 - 🔧 **Subprocess utilities** — Capture and forward subprocess output
 - 📝 **Text processing** — Pluralization and error message cleanup utilities
 - 🔧 **Type utilities** — Safe isinstance checks for TypedDicts and generics

@@ -93,7 +93,7 @@ Detect how your package is being executed:
 from apathetic_utils import detect_runtime_mode
 
 mode = detect_runtime_mode("my_package")
-# Returns: "installed", "standalone", "zipapp", or "frozen"
+# Returns: "package", "stitched", "zipapp", or "frozen"
 ```
 
 ## Path Utilities

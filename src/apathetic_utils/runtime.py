@@ -30,13 +30,13 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
         """Detect the current runtime mode.
 
         Args:
-            package_name: Name of the package to check for standalone mode
+            package_name: Name of the package to check for stitched mode
 
         Returns:
             - "frozen" if running as a frozen executable
             - "zipapp" if running as a .pyz zipapp
-            - "standalone" if running as a standalone single-file script
-            - "installed" if running from installed package
+            - "stitched" if running as a stitched single-file script
+            - "package" if running from package
         """
         if getattr(sys, "frozen", False):
             return "frozen"
@@ -49,22 +49,22 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
             zipapp_path = getattr(main_mod, runtime_file, "")
             if isinstance(zipapp_path, str) and zipapp_path.endswith(".pyz"):
                 return "zipapp"
-        # Check for standalone mode in multiple locations
-        # 1. Current module's globals (for when called from within standalone script)
+        # Check for stitched mode in multiple locations
+        # 1. Current module's globals (for when called from within stitched script)
         # This works when all files are stitched into a single namespace
-        if "__STANDALONE__" in globals():
-            return "standalone"
+        if "__STITCHED__" in globals():
+            return "stitched"
         # 2. Check package module's globals (when loaded via importlib)
-        # The standalone script is loaded as the package
+        # The stitched script is loaded as the package
         pkg_mod = sys.modules.get(package_name)
-        if pkg_mod is not None and hasattr(pkg_mod, "__STANDALONE__"):
-            return "standalone"
+        if pkg_mod is not None and hasattr(pkg_mod, "__STITCHED__"):
+            return "stitched"
         # 3. Check __main__ module's globals (for script execution)
         if "__main__" in sys.modules:
             main_mod = sys.modules["__main__"]
-            if hasattr(main_mod, "__STANDALONE__"):
-                return "standalone"
-        return "installed"
+            if hasattr(main_mod, "__STITCHED__"):
+                return "stitched"
+        return "package"
 
     @staticmethod
     def find_zipbundler() -> list[str]:
@@ -128,11 +128,11 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
         package_name: str,
         bundler_script: str | None = None,
     ) -> Path:
-        """Rebuild standalone script if missing or outdated.
+        """Rebuild stitched script if missing or outdated.
 
         Args:
             root: Project root directory
-            script_name: Optional name of the standalone script (without .py extension).
+            script_name: Optional name of the stitched script (without .py extension).
                 If None, defaults to package_name.
             package_name: Name of the package (e.g., "apathetic_utils")
             bundler_script: Optional path to bundler script (relative to root).
@@ -140,7 +140,7 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
                 Otherwise, uses `python -m serger --config .serger.jsonc`.
 
         Returns:
-            Path to the standalone script
+            Path to the stitched script
         """
         # Use package_name as default if script_name not provided
         actual_script_name = package_name if script_name is None else script_name
@@ -162,7 +162,7 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
                 bundler_path = root / bundler_script
                 if bundler_path.exists():
                     print(  # noqa: T201
-                        f"⚙️  Rebuilding standalone bundle (python {bundler_script})..."
+                        f"⚙️  Rebuilding stitched bundle (python {bundler_script})..."
                     )
                     subprocess.run(  # noqa: S603
                         [sys.executable, str(bundler_path)],
@@ -172,7 +172,7 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
                     # force mtime update in case contents identical
                     bin_path.touch()
                     if not bin_path.exists():
-                        msg = "❌ Failed to generate standalone script."
+                        msg = "❌ Failed to generate stitched script."
                         raise RuntimeError(msg)
                     return bin_path
 
@@ -180,12 +180,12 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
             config_path = root / ".serger.jsonc"
             if not config_path.exists():
                 msg = (
-                    "❌ Failed to generate standalone script: "
+                    "❌ Failed to generate stitched script: "
                     f"serger config not found at {config_path}."
                 )
                 raise RuntimeError(msg)
 
-            print("⚙️  Rebuilding standalone bundle (python -m serger)...")  # noqa: T201
+            print("⚙️  Rebuilding stitched bundle (python -m serger)...")  # noqa: T201
             subprocess.run(  # noqa: S603
                 [
                     sys.executable,
@@ -200,7 +200,7 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
             # force mtime update in case contents identical
             bin_path.touch()
             if not bin_path.exists():
-                msg = "❌ Failed to generate standalone script."
+                msg = "❌ Failed to generate stitched script."
                 raise RuntimeError(msg)
 
         return bin_path
@@ -273,8 +273,8 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
         """Pre-import hook — runs before any tests or plugins are imported.
 
         Swaps in the appropriate runtime module based on RUNTIME_MODE:
-        - installed (default): uses src/{package_name} (no swap needed)
-        - singlefile: uses dist/{script_name}.py (serger-built single file)
+        - package (default): uses src/{package_name} (no swap needed)
+        - stitched: uses dist/{script_name}.py (serger-built single file)
         - zipapp: uses dist/{script_name}.pyz (zipbundler-built zipapp)
 
         This ensures all test imports work transparently regardless of runtime mode.
@@ -282,7 +282,7 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
         Args:
             root: Project root directory
             package_name: Name of the package (e.g., "apathetic_utils")
-            script_name: Optional name of the standalone script (without extension).
+            script_name: Optional name of the stitched script (without extension).
                 If None, defaults to package_name.
             bundler_script: Optional path to bundler script (relative to root).
                 If provided and exists, uses `python {bundler_script}`.
@@ -290,7 +290,7 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
             mode: Runtime mode override. If None, reads from RUNTIME_MODE env var.
 
         Returns:
-            True if swap was performed, False if in installed mode
+            True if swap was performed, False if in package mode
 
         Raises:
             pytest.UsageError: If mode is invalid or build fails
@@ -298,10 +298,10 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
         safe_trace = makeSafeTrace("🧬")
 
         if mode is None:
-            mode = os.getenv("RUNTIME_MODE", "installed")
+            mode = os.getenv("RUNTIME_MODE", "package")
 
-        if mode == "installed":
-            return False  # Normal installed mode; nothing to do.
+        if mode == "package":
+            return False  # Normal package mode; nothing to do.
 
         # Nuke any already-imported modules from src/ to avoid stale refs.
         # Dynamically detect all modules under src/ instead of hardcoding names.
@@ -317,8 +317,8 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
                     del sys.modules[name]
                     break
 
-        if mode == "singlefile":
-            return ApatheticUtils_Internal_Runtime._load_singlefile_mode(
+        if mode == "stitched":
+            return ApatheticUtils_Internal_Runtime._load_stitched_mode(
                 root, package_name, script_name, bundler_script, safe_trace
             )
         if mode == "zipapp":
@@ -327,20 +327,18 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
             )
 
         # Unknown mode
-        xmsg = (
-            f"Unknown RUNTIME_MODE={mode!r}. Valid modes: installed, singlefile, zipapp"
-        )
+        xmsg = f"Unknown RUNTIME_MODE={mode!r}. Valid modes: package, stitched, zipapp"
         raise pytest.UsageError(xmsg)
 
     @staticmethod
-    def _load_singlefile_mode(
+    def _load_stitched_mode(
         root: Path,
         package_name: str,
         script_name: str | None,
         bundler_script: str | None,
         safe_trace: Any,
     ) -> bool:
-        """Load standalone single-file script mode."""
+        """Load stitched single-file script mode."""
         bin_path = ApatheticUtils_Internal_Runtime.ensure_standalone_script_up_to_date(
             root=root,
             script_name=script_name,
@@ -350,19 +348,21 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
 
         if not bin_path.exists():
             if bundler_script is None:
-                hint_msg = "Hint: run the bundler (e.g. `poetry run poe build:script`)."
+                hint_msg = (
+                    "Hint: run the bundler (e.g. `poetry run poe build:stitched`)."
+                )
             else:
                 hint_msg = (
                     f"Hint: run the bundler (e.g. `python {bundler_script}` "
-                    f"or `poetry run poe build:script`)."
+                    f"or `poetry run poe build:stitched`)."
                 )
             xmsg = (
-                f"RUNTIME_MODE=singlefile but standalone script not found "
+                f"RUNTIME_MODE=stitched but stitched script not found "
                 f"at {bin_path}.\n{hint_msg}"
             )
             raise pytest.UsageError(xmsg)
 
-        # Load standalone script as the package.
+        # Load stitched script as the package.
         spec = importlib.util.spec_from_file_location(package_name, bin_path)
         if not spec or not spec.loader:
             xmsg = f"Could not create import spec for {bin_path}"
@@ -372,18 +372,18 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
             mod: ModuleType = importlib.util.module_from_spec(spec)
             sys.modules[package_name] = mod
             spec.loader.exec_module(mod)
-            safe_trace(f"Loaded standalone module from {bin_path}")
+            safe_trace(f"Loaded stitched module from {bin_path}")
         except Exception as e:
             # Fail fast with context; this is a config/runtime problem.
             error_name = type(e).__name__
             xmsg = (
-                f"Failed to import standalone module from {bin_path}.\n"
+                f"Failed to import stitched module from {bin_path}.\n"
                 f"Original error: {error_name}: {e}\n"
                 f"Tip: rebuild the bundle and re-run."
             )
             raise pytest.UsageError(xmsg) from e
 
-        safe_trace(f"✅ Loaded standalone runtime early from {bin_path}")
+        safe_trace(f"✅ Loaded stitched runtime early from {bin_path}")
         return True
 
     @staticmethod

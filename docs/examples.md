@@ -183,10 +183,10 @@ from apathetic_utils import detect_runtime_mode
 def get_build_info():
     mode = detect_runtime_mode("my_package")
     
-    if mode == "installed":
-        print("Running as installed package")
-    elif mode == "standalone":
-        print("Running as standalone script")
+    if mode == "package":
+        print("Running as package")
+    elif mode == "stitched":
+        print("Running as stitched script")
     elif mode == "zipapp":
         print("Running as zipapp")
     elif mode == "frozen":
@@ -451,12 +451,12 @@ from pathlib import Path
 def get_build_config():
     mode = detect_runtime_mode("my_package")
     
-    if mode == "standalone":
-        # Load standalone-specific config
+    if mode == "stitched":
+        # Load stitched-specific config
         config = load_jsonc(Path(".serger.jsonc"))
-        return config.get("standalone", {})
+        return config.get("stitched", {})
     else:
-        # Use installed package config
+        # Use package config
         return {}
 ```
 

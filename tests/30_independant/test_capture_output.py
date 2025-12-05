@@ -1,5 +1,5 @@
 # tests/0_independant/test_capture_output.py
-"""Tests for package.utils (package and standalone versions)."""
+"""Tests for package.utils (package and stitched versions)."""
 
 import sys
 from io import StringIO

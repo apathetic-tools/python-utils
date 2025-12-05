@@ -3,12 +3,12 @@
 
 This test verifies that our unique runtime_mode swap functionality works
 correctly. Our conftest.py uses runtime_swap() to allow tests to run against
-either the installed package (src/apathetic_utils) or the standalone single-file script
+either the package (src/apathetic_utils) or the stitched single-file script
 (dist/apathetic_utils.py) based on the RUNTIME_MODE environment variable.
 
 Verifies:
-  - When RUNTIME_MODE=singlefile: All modules resolve to dist/apathetic_utils.py
-  - When RUNTIME_MODE is unset (installed): All modules resolve to src/apathetic_utils/
+  - When RUNTIME_MODE=stitched: All modules resolve to dist/apathetic_utils.py
+  - When RUNTIME_MODE is unset (package): All modules resolve to src/apathetic_utils/
   - Python's import cache (sys.modules) points to the correct sources
   - All submodules load from the expected location
 
@@ -51,7 +51,7 @@ def list_important_modules() -> list[str]:
     """Return all importable submodules under the package, if available."""
     important: list[str] = []
     if not hasattr(amod_utils_runtime, "__path__"):
-        safe_trace("pkgutil.walk_packages skipped — standalone runtime (no __path__)")
+        safe_trace("pkgutil.walk_packages skipped — stitched runtime (no __path__)")
         important.append(amod_utils_runtime.__name__)
     else:
         for _, name, _ in pkgutil.walk_packages(
@@ -65,7 +65,7 @@ def list_important_modules() -> list[str]:
 
 def dump_snapshot(*, include_full: bool = False) -> None:
     """Prints a summary of key modules and (optionally) a full sys.modules dump."""
-    mode: str = os.getenv("RUNTIME_MODE", "installed")
+    mode: str = os.getenv("RUNTIME_MODE", "package")
 
     safe_trace("========== SNAPSHOT ===========")
     safe_trace(f"RUNTIME_MODE={mode}")
@@ -103,8 +103,8 @@ def test_pytest_runtime_cache_integrity() -> None:  # noqa: PLR0912, PLR0915
 
     Ensures that modules imported at the top of test files resolve to the
     correct source based on RUNTIME_MODE:
-    - singlefile mode: All modules must load from dist/apathetic_utils.py
-    - installed mode: All modules must load from src/apathetic_utils/
+    - stitched mode: All modules must load from dist/apathetic_utils.py
+    - package mode: All modules must load from src/apathetic_utils/
 
     Also verifies that Python's import cache (sys.modules) doesn't have stale
     references pointing to the wrong runtime.
@@ -113,12 +113,12 @@ def test_pytest_runtime_cache_integrity() -> None:  # noqa: PLR0912, PLR0915
     mode = os.getenv("RUNTIME_MODE", "unknown")
     expected_script = DIST_ROOT / f"{PROGRAM_SCRIPT}.py"
 
-    # In singlefile/zipapp mode, get the module from sys.modules to ensure we're
-    # using the version from the standalone script/zipapp (which was loaded by
+    # In stitched/zipapp mode, get the module from sys.modules to ensure we're
+    # using the version from the stitched script/zipapp (which was loaded by
     # runtime_swap) rather than the one imported at the top of this file (which
-    # might be from the installed package if it was imported before runtime_swap ran)
-    if mode in ("singlefile", "zipapp") and f"{PROGRAM_PACKAGE}.runtime" in sys.modules:
-        # Use the module from sys.modules, which should be from the standalone
+    # might be from the package if it was imported before runtime_swap ran)
+    if mode in ("stitched", "zipapp") and f"{PROGRAM_PACKAGE}.runtime" in sys.modules:
+        # Use the module from sys.modules, which should be from the stitched
         # script/zipapp
         amod_utils_runtime_actual = sys.modules[f"{PROGRAM_PACKAGE}.runtime"]
         # Check __file__ directly - for stitched modules, should point to
@@ -142,33 +142,33 @@ def test_pytest_runtime_cache_integrity() -> None:  # noqa: PLR0912, PLR0915
     # Access via main module to get the function from the namespace class
     runtime_mode = _runtime.detect_runtime_mode(PROGRAM_PACKAGE)
 
-    if mode == "singlefile":
-        # --- verify singlefile ---
+    if mode == "stitched":
+        # --- verify stitched ---
         # what does the module itself think?
-        assert runtime_mode == "standalone", (
-            f"Expected runtime_mode='standalone' but got '{runtime_mode}'"
+        assert runtime_mode == "stitched", (
+            f"Expected runtime_mode='stitched' but got '{runtime_mode}'"
         )
 
         # exists
         assert expected_script.exists(), (
-            f"Expected standalone script at {expected_script}"
+            f"Expected stitched script at {expected_script}"
         )
 
-        # path peeks - in singlefile mode, apathetic_utils modules might be
-        # imported from the installed package, but they should still detect
-        # standalone mode correctly via sys.modules.get("apathetic_utils")
+        # path peeks - in stitched mode, apathetic_utils modules might be
+        # imported from the package, but they should still detect
+        # stitched mode correctly via sys.modules.get("apathetic_utils")
         # So we only check the path if the module is actually from dist/
         if utils_file.startswith(str(DIST_ROOT)):
-            # Module is from standalone script, verify it's the right file
+            # Module is from stitched script, verify it's the right file
             assert Path(utils_file).samefile(expected_script), (
                 f"{utils_file} should be same file as {expected_script}"
             )
         else:
-            # Module is from installed package, but that's OK as long as
-            # detect_runtime_mode() correctly returns "standalone"
+            # Module is from package, but that's OK as long as
+            # detect_runtime_mode() correctly returns "stitched"
             safe_trace(
-                f"Note: apathetic_utils.version loaded from installed package "
-                f"({utils_file}), but runtime_mode correctly detected as 'standalone'"
+                f"Note: apathetic_utils.version loaded from package "
+                f"({utils_file}), but runtime_mode correctly detected as 'stitched'"
             )
 
         # troubleshooting info
@@ -183,7 +183,7 @@ def test_pytest_runtime_cache_integrity() -> None:  # noqa: PLR0912, PLR0915
     else:
         # --- verify module ---
         # what does the module itself think?
-        assert runtime_mode != "standalone"
+        assert runtime_mode != "stitched"
 
         # path peeks
         if mode == "zipapp":
@@ -196,9 +196,9 @@ def test_pytest_runtime_cache_integrity() -> None:  # noqa: PLR0912, PLR0915
                 f"{utils_file} not from zipapp {expected_zipapp}"
             )
         else:
-            # In installed mode, module should be from src/
+            # In package mode, module should be from src/
             assert utils_file is not None, (
-                "utils_file should not be None in installed mode"
+                "utils_file should not be None in package mode"
             )
             assert utils_file.startswith(str(SRC_ROOT)), f"{utils_file} not in src/"
 
@@ -216,7 +216,7 @@ def test_pytest_runtime_cache_integrity() -> None:  # noqa: PLR0912, PLR0915
                 path = Path(inspect.getsourcefile(mod) or "")
         else:
             path = Path(inspect.getsourcefile(mod) or "")
-        if mode == "singlefile":
+        if mode == "stitched":
             assert path.samefile(expected_script), f"{submodule} loaded from {path}"
         elif mode == "zipapp":
             # In zipapp mode, modules should be from the zipapp
@@ -238,7 +238,7 @@ def test_debug_dump_all_module_origins() -> None:
 
     Usage:
         TRACE=1 poetry run pytest -k debug -s
-        RUNTIME_MODE=singlefile TRACE=1 poetry run pytest -k debug -s
+        RUNTIME_MODE=stitched TRACE=1 poetry run pytest -k debug -s
     """
     # --- verify ---
 

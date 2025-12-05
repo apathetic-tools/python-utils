@@ -1,5 +1,5 @@
 # tests/0_independant/test_remove_path_in_error_message.py
-"""Tests for package.utils (package and standalone versions)."""
+"""Tests for package.utils (package and stitched versions)."""
 
 # not doing tests for has_glob_chars()
 

@@ -3,7 +3,7 @@
 [project]
 name = "apathetic-utils"
 version = "0.2.2"
-description = "When stdlib isn't enough."
+description = "When stdlib is almost enough."
 authors = [
     { name = "Apathetic Tools" }
 ]
@@ -51,21 +51,21 @@ typecheck = ["typecheck:mypy", "typecheck:pyright"]
 # run pyright to simulate pylance for AI CLI auto-fix
 "typecheck:pyright" = "bash dev/pyright-quiet.sh src tests"
 
-# 🧪 Tests (runs all three: installed + singlefile + zipapp)
+# 🧪 Tests (runs all three: package + stitched + zipapp)
 test = [
-  "test:pytest:installed",
-#  "test:pytest:script",
+  "test:pytest:package",
+#  "test:pytest:stitched",
 #  "test:pytest:zipapp"
 ]
-"test:pytest:installed" = "pytest"
-"test:pytest:installed:parallel" = "pytest -n auto"
-"test:pytest:script" = [
-  "build:script",
-  { cmd = "pytest", env = { RUNTIME_MODE="singlefile" } }
+"test:pytest:package" = "pytest"
+"test:pytest:package:parallel" = "pytest -n auto"
+"test:pytest:stitched" = [
+  "build:stitched",
+  { cmd = "pytest", env = { RUNTIME_MODE="stitched" } }
 ]
-"test:pytest:script:parallel" = [
-  "build:script",
-  { cmd = "pytest -n auto", env = { RUNTIME_MODE="singlefile" } }
+"test:pytest:stitched:parallel" = [
+  "build:stitched",
+  { cmd = "pytest -n auto", env = { RUNTIME_MODE="stitched" } }
 ]
 "test:pytest:zipapp" = [
   "build:zipapp",
@@ -77,41 +77,41 @@ test = [
 ]
 
 # 🚀 Fast test runs (for development)
-# Fast: installed mode only, parallel, skip slow tests
+# Fast: package mode only, parallel, skip slow tests
 "test:fast" = "pytest -n auto -m 'not slow'"
 # Fast: all three modes, parallel, skip slow tests
-"test:fast:installed" = "pytest -n auto -m 'not slow'"
-"test:fast:script" = [
-  "build:script",
-  { cmd = "pytest -n auto -m 'not slow'", env = { RUNTIME_MODE="singlefile" } }
+"test:fast:package" = "pytest -n auto -m 'not slow'"
+"test:fast:stitched" = [
+  "build:stitched",
+  { cmd = "pytest -n auto -m 'not slow'", env = { RUNTIME_MODE="stitched" } }
 ]
 "test:fast:zipapp" = [
   "build:zipapp",
   { cmd = "pytest -n auto -m 'not slow'", env = { RUNTIME_MODE="zipapp" } }
 ]
 "test:fast:all" = [
-  "test:fast:installed",
-#  "test:fast:script",
+  "test:fast:package",
+#  "test:fast:stitched",
 #  "test:fast:zipapp"
 ]
 # Parallel: all three modes with parallel execution
 "test:parallel" = [
-  "test:pytest:installed:parallel",
-#  "test:pytest:script:parallel",
+  "test:pytest:package:parallel",
+#  "test:pytest:stitched:parallel",
 #  "test:pytest:zipapp:parallel"
 ]
 
 # 📊 Coverage reporting
 "coverage:clean" = { shell = "rm -f .coverage .coverage.*" }
-"coverage:run:installed" = { cmd = "pytest --cov=src --cov-report= --cov-context=test", env = { COVERAGE_FILE=".coverage.installed" } }
-"coverage:run:singlefile" = { cmd = "pytest --cov=src --cov-report= --cov-context=test", env = { RUNTIME_MODE="singlefile", COVERAGE_FILE=".coverage.singlefile" } }
+"coverage:run:package" = { cmd = "pytest --cov=src --cov-report= --cov-context=test", env = { COVERAGE_FILE=".coverage.package" } }
+"coverage:run:stitched" = { cmd = "pytest --cov=src --cov-report= --cov-context=test", env = { RUNTIME_MODE="stitched", COVERAGE_FILE=".coverage.stitched" } }
 "coverage:run:zipapp" = { cmd = "pytest --cov=src --cov-report= --cov-context=test", env = { RUNTIME_MODE="zipapp", COVERAGE_FILE=".coverage.zipapp" } }
-"coverage:combine" = { cmd = "coverage combine .coverage.installed .coverage.singlefile .coverage.zipapp" }
+"coverage:combine" = { cmd = "coverage combine .coverage.package .coverage.stitched .coverage.zipapp" }
 "coverage:base" = [
   "coverage:clean",
-  "coverage:run:installed",
-  "build:script",
-  "coverage:run:singlefile",
+  "coverage:run:package",
+  "build:stitched",
+  "coverage:run:stitched",
   "build:zipapp",
   "coverage:run:zipapp",
   "coverage:combine",
@@ -128,16 +128,16 @@ test = [
 ]
 
 # 🧹 Automated fixing / formatting
-fix = ["sync:ai:guidance", "fix:ruff:installed", "fix:format:installed"]
+fix = ["sync:ai:guidance", "fix:ruff:package", "fix:format:package"]
 "fix:dist" = ["fix:ruff:dist", "fix:format:dist"]
-"fix:ruff:installed" = "ruff check . --fix -q"
+"fix:ruff:package" = "ruff check . --fix -q"
 "fix:ruff:dist" = { shell = "if [ -d dist ]; then ruff check dist --fix -q; fi" }
-"fix:format:installed" = "ruff format . -q"
+"fix:format:package" = "ruff format . -q"
 "fix:format:dist" = { shell = "if [ -d dist ]; then ruff format dist -q; fi" }
 
 # 🧩 Build and license
 "sync:ai:guidance" = "python -m sync_ai_guidance --quiet"
-"build:script" = "python -m serger"
+"build:stitched" = "python -m serger"
 "build:zipapp" = "python -m zipbundler -m apathetic_utils -o dist/apathetic_utils.pyz . -q"
 
 # 🚀 Release management (semantic-release)

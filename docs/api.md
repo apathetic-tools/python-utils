@@ -470,8 +470,8 @@ Detect how the package is being executed.
 
 **Returns:**
 - `str`: Runtime mode, one of:
-  - `"installed"`: Package installed via pip/poetry
-  - `"standalone"`: Single-file standalone script
+  - `"package"`: Package installed via pip/poetry
+  - `"stitched"`: Single-file stitched script
   - `"zipapp"`: Python zipapp (`.pyz` file)
   - `"frozen"`: Frozen executable (PyInstaller, etc.)
 
@@ -593,21 +593,21 @@ ensure_standalone_script_up_to_date(
 ) -> Path
 ```
 
-Rebuild standalone script if missing or outdated.
+Rebuild stitched script if missing or outdated.
 
-Checks if the standalone script exists and is newer than all source files. If not, rebuilds it using either the provided bundler script or the Poetry-installed `serger` module.
+Checks if the stitched script exists and is newer than all source files. If not, rebuilds it using either the provided bundler script or the Poetry-installed `serger` module.
 
 **Parameters:**
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `root` | `Path` | Project root directory |
-| `script_name` | `str \| None` | Optional name of the standalone script (without .py extension). If None, defaults to `package_name`. |
+| `script_name` | `str \| None` | Optional name of the stitched script (without .py extension). If None, defaults to `package_name`. |
 | `package_name` | `str` | Name of the package (e.g., "apathetic_utils") |
 | `bundler_script` | `str \| None` | Optional path to bundler script (relative to root). If provided and exists, uses `python {bundler_script}`. Otherwise, uses `python -m serger --config .serger.jsonc`. |
 
 **Returns:**
-- `Path`: Path to the standalone script
+- `Path`: Path to the stitched script
 
 **Raises:**
 - `RuntimeError`: If the script generation fails
@@ -703,8 +703,8 @@ runtime_swap(
 Pre-import hook — runs before any tests or plugins are imported.
 
 Swaps in the appropriate runtime module based on `RUNTIME_MODE`:
-- `installed` (default): uses `src/{package_name}` (no swap needed)
-- `singlefile`: uses `dist/{script_name}.py` (serger-built single file)
+- `package` (default): uses `src/{package_name}` (no swap needed)
+- `stitched`: uses `dist/{script_name}.py` (serger-built single file)
 - `zipapp`: uses `dist/{script_name}.pyz` (zipbundler-built zipapp)
 
 This ensures all test imports work transparently regardless of runtime mode.
@@ -715,12 +715,12 @@ This ensures all test imports work transparently regardless of runtime mode.
 |-----------|------|-------------|
 | `root` | `Path` | Project root directory |
 | `package_name` | `str` | Name of the package (e.g., "apathetic_utils") |
-| `script_name` | `str \| None` | Optional name of the standalone script (without extension). If None, defaults to `package_name`. |
+| `script_name` | `str \| None` | Optional name of the stitched script (without extension). If None, defaults to `package_name`. |
 | `bundler_script` | `str \| None` | Optional path to bundler script (relative to root). If provided and exists, uses `python {bundler_script}`. Otherwise, uses `python -m serger --config .serger.jsonc`. |
 | `mode` | `str \| None` | Runtime mode override. If None, reads from `RUNTIME_MODE` env var. |
 
 **Returns:**
-- `bool`: `True` if swap was performed, `False` if in installed mode
+- `bool`: `True` if swap was performed, `False` if in package mode
 
 **Raises:**
 - `pytest.UsageError`: If mode is invalid or build fails
@@ -735,7 +735,7 @@ from pathlib import Path
 runtime_swap(
     root=Path(__file__).parent.parent,
     package_name="my_package",
-    mode="singlefile"  # or None to read from RUNTIME_MODE env var
+    mode="stitched"  # or None to read from RUNTIME_MODE env var
 )
 
 # Using a custom script name
@@ -743,7 +743,7 @@ runtime_swap(
     root=Path(__file__).parent.parent,
     package_name="my_package",
     script_name="my_script",
-    mode="singlefile"
+    mode="stitched"
 )
 
 # Using a local bundler script
@@ -752,7 +752,7 @@ runtime_swap(
     package_name="my_package",
     script_name="my_script",
     bundler_script="bin/serger.py",
-    mode="singlefile"
+    mode="stitched"
 )
 ```
 
@@ -1224,7 +1224,7 @@ Works in both package and stitched single-file runtimes. Walks `sys.modules` onc
 | `func_name` | `str` | Name of the function to patch |
 | `replacement_func` | `Callable[..., object]` | Function to replace the original with |
 | `package_prefix` | `str \| Sequence[str]` | Package name prefix(es) to filter modules. Can be a single string (e.g., "apathetic_utils") or a sequence of strings (e.g., ["apathetic_utils", "my_package"]) to patch across multiple packages. |
-| `stitch_hints` | `set[str] \| None` | Set of path hints to identify stitched modules. Defaults to `{"/dist/", "standalone"}`. When providing custom hints, you must be certain of the path attributes of your stitched file, as this uses substring matching on the module's `__file__` path. This is a heuristic fallback when identity checks fail (e.g., when modules are reloaded). |
+| `stitch_hints` | `set[str] \| None` | Set of path hints to identify stitched modules. Defaults to `{"/dist/", "stitched"}`. When providing custom hints, you must be certain of the path attributes of your stitched file, as this uses substring matching on the module's `__file__` path. This is a heuristic fallback when identity checks fail (e.g., when modules are reloaded). |
 | `create_if_missing` | `bool` | If True, create the attribute if it doesn't exist. If False (default), raise TypeError if the function doesn't exist. |
 | `caller_func_name` | `str \| None` | If provided, only patch `__globals__` for this specific function to handle direct calls. If None (default), patch `__globals__` for all functions in stitched modules that reference the original function. |
 

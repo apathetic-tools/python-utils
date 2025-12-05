@@ -5,8 +5,8 @@ The detect_runtime_mode() function checks multiple indicators to
 determine how the code is currently running:
 1. sys.frozen - PyInstaller/py2exe indicator
 2. sys.modules["__main__"].__file__ ending with .pyz - zipapp indicator
-3. __STANDALONE__ in globals() - serger's single-file indicator
-4. Otherwise: installed package (default)
+3. __STITCHED__ in globals() - serger's stitched script indicator
+4. Otherwise: package (default)
 
 Note: The zipapp detection works by checking if the file specified by
 the utils module's __file__ variable (as an attribute name on __main__)
@@ -103,7 +103,7 @@ def test_detect_runtime_mode_zipapp_missing_file_attribute() -> None:
     # Create a mock __main__ without the utils.__file__ attribute
     mock_main = MagicMock(spec=[])  # spec=[] means no attributes
 
-    # Save and remove serger module if it exists (it might have __STANDALONE__)
+    # Save and remove serger module if it exists (it might have __STITCHED__)
     saved_serger = sys.modules.pop("serger", None)
 
     try:
@@ -115,27 +115,27 @@ def test_detect_runtime_mode_zipapp_missing_file_attribute() -> None:
                 clear=False,
             ) as patched_globals,
         ):
-            patched_globals.pop("__STANDALONE__", None)
-            # Ensure __main__ doesn't have __STANDALONE__ either
-            if hasattr(mock_main, "__STANDALONE__"):
-                delattr(mock_main, "__STANDALONE__")
+            patched_globals.pop("__STITCHED__", None)
+            # Ensure __main__ doesn't have __STITCHED__ either
+            if hasattr(mock_main, "__STITCHED__"):
+                delattr(mock_main, "__STITCHED__")
 
             # --- execute ---
             result = _runtime.detect_runtime_mode(PROGRAM_PACKAGE)
 
         # --- verify ---
-        # Should fall through to installed since no indicators match
-        assert result == "installed"
+        # Should fall through to package since no indicators match
+        assert result == "package"
     finally:
         # Restore serger module if it was there
         if saved_serger is not None:
             sys.modules["serger"] = saved_serger
 
 
-def test_detect_runtime_mode_standalone() -> None:
-    """Test detection of standalone mode.
+def test_detect_runtime_mode_stitched() -> None:
+    """Test detection of stitched mode.
 
-    serger's single-file executable has __STANDALONE__ in globals().
+    serger's stitched script has __STITCHED__ in globals().
     """
     # --- setup ---
     # Create a context where frozen=False and the zipapp check fails
@@ -149,7 +149,7 @@ def test_detect_runtime_mode_standalone() -> None:
         patch.dict(sys.modules, {"__main__": mock_main}),
         patch.dict(
             _runtime.detect_runtime_mode.__globals__,
-            {"__STANDALONE__": True},
+            {"__STITCHED__": True},
             clear=False,
         ),
     ):
@@ -157,19 +157,19 @@ def test_detect_runtime_mode_standalone() -> None:
         result = _runtime.detect_runtime_mode(PROGRAM_PACKAGE)
 
     # --- verify ---
-    assert result == "standalone"
+    assert result == "stitched"
 
 
-def test_detect_runtime_mode_installed() -> None:
-    """Test detection of installed mode (default).
+def test_detect_runtime_mode_package() -> None:
+    """Test detection of package mode (default).
 
-    When no other indicators are present, should return "installed".
+    When no other indicators are present, should return "package".
     """
     # --- setup ---
     # Create a mock __main__ that doesn't have the zipapp attribute
     mock_main = MagicMock(spec=[])
 
-    # Save and remove serger module if it exists (it might have __STANDALONE__)
+    # Save and remove serger module if it exists (it might have __STITCHED__)
     saved_serger = sys.modules.pop("serger", None)
 
     try:
@@ -181,30 +181,30 @@ def test_detect_runtime_mode_installed() -> None:
                 clear=False,
             ) as patched_globals,
         ):
-            # Remove __STANDALONE__ if it exists
-            patched_globals.pop("__STANDALONE__", None)
-            # Ensure __main__ doesn't have __STANDALONE__ either
-            if hasattr(mock_main, "__STANDALONE__"):
-                delattr(mock_main, "__STANDALONE__")
+            # Remove __STITCHED__ if it exists
+            patched_globals.pop("__STITCHED__", None)
+            # Ensure __main__ doesn't have __STITCHED__ either
+            if hasattr(mock_main, "__STITCHED__"):
+                delattr(mock_main, "__STITCHED__")
 
             # --- execute ---
             result = _runtime.detect_runtime_mode(PROGRAM_PACKAGE)
 
         # --- verify ---
-        assert result == "installed"
+        assert result == "package"
     finally:
         # Restore serger module if it was there
         if saved_serger is not None:
             sys.modules["serger"] = saved_serger
 
 
-def test_detect_runtime_mode_installed_missing_main() -> None:
-    """Test installed mode when __main__ is missing from sys.modules.
+def test_detect_runtime_mode_package_missing_main() -> None:
+    """Test package mode when __main__ is missing from sys.modules.
 
     This shouldn't normally happen in Python, but we should handle it.
     """
     # --- setup ---
-    # Save and remove serger module if it exists (it might have __STANDALONE__)
+    # Save and remove serger module if it exists (it might have __STITCHED__)
     saved_serger = sys.modules.pop("serger", None)
 
     try:
@@ -215,12 +215,12 @@ def test_detect_runtime_mode_installed_missing_main() -> None:
             # Ensure __main__ is not in sys.modules for this test
             saved_main = sys.modules.pop("__main__", None)
             try:
-                # Ensure __STANDALONE__ is not in globals
+                # Ensure __STITCHED__ is not in globals
                 with patch.dict(
                     _runtime.detect_runtime_mode.__globals__,
                     clear=False,
                 ) as patched_globals:
-                    patched_globals.pop("__STANDALONE__", None)
+                    patched_globals.pop("__STITCHED__", None)
 
                     # --- execute ---
                     result = _runtime.detect_runtime_mode(PROGRAM_PACKAGE)
@@ -230,7 +230,7 @@ def test_detect_runtime_mode_installed_missing_main() -> None:
                     sys.modules["__main__"] = saved_main
 
         # --- verify ---
-        assert result == "installed"
+        assert result == "package"
     finally:
         # Restore serger module if it was there
         if saved_serger is not None:
@@ -240,7 +240,7 @@ def test_detect_runtime_mode_installed_missing_main() -> None:
 def test_detect_runtime_mode_frozen_takes_precedence() -> None:
     """Test that frozen mode takes precedence over other indicators.
 
-    Even if the zipapp or __STANDALONE__ indicators match, if sys.frozen
+    Even if the zipapp or __STITCHED__ indicators match, if sys.frozen
     is True, it should return "frozen".
     """
     # --- setup ---
@@ -255,7 +255,7 @@ def test_detect_runtime_mode_frozen_takes_precedence() -> None:
         patch.dict(sys.modules, {"__main__": mock_main}),
         patch.dict(
             _runtime.detect_runtime_mode.__globals__,
-            {"__STANDALONE__": True},
+            {"__STITCHED__": True},
             clear=False,
         ),
     ):
@@ -266,11 +266,11 @@ def test_detect_runtime_mode_frozen_takes_precedence() -> None:
     assert result == "frozen"
 
 
-def test_detect_runtime_mode_zipapp_takes_precedence_over_standalone() -> None:
-    """Test that zipapp detection takes precedence over standalone.
+def test_detect_runtime_mode_zipapp_takes_precedence_over_stitched() -> None:
+    """Test that zipapp detection takes precedence over stitched.
 
     If the zipapp check matches, it should return "zipapp" even if
-    __STANDALONE__ exists.
+    __STITCHED__ exists.
     """
     # --- setup ---
     utils_file = amod_utils_runtime.__file__
@@ -284,7 +284,7 @@ def test_detect_runtime_mode_zipapp_takes_precedence_over_standalone() -> None:
         patch.dict(sys.modules, {"__main__": mock_main}),
         patch.dict(
             _runtime.detect_runtime_mode.__globals__,
-            {"__STANDALONE__": True},
+            {"__STITCHED__": True},
             clear=False,
         ),
     ):

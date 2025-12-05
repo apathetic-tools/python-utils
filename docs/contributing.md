@@ -50,7 +50,7 @@ All key workflows are defined in **`[tool.poe.tasks]`** inside `pyproject.toml`.
 | `poetry run poe check:fix` | Auto-fix issues, re-format, type-check, and re-test. |
 | `poetry run poe check` | Run linting (`ruff`), type checks (`mypy`), and tests (`pytest`). |
 | `poetry run poe fix` | Run all auto-fixers (`ruff`). |
-| `poetry run poe build:script` | Bundle the project into a single portable script in `dist/`. |
+| `poetry run poe build:stitched` | Bundle the project into a single portable script in `dist/`. |
 | `poetry run poe build:zipapp` | Create a cross-platform zipapp (`.pyz`) with dependency support. |
 | `poetry run poe release:version` | Check what version would be released (dry run). |
 | `poetry run poe release:publish` | Publish a release (creates tag, GitHub release, etc.). |
@@ -267,7 +267,7 @@ Apathetic Python Utils ships in three forms:
 
 | Target | Command | Output |
 |--------|---------|--------|
-| **Single-file script** | `poetry run poe build:script` | Creates `dist/apathetic_utils.py` (human-readable, stitched source) |
+| **Stitched script** | `poetry run poe build:stitched` | Creates `dist/apathetic_utils.py` (human-readable, stitched source) |
 | **Zipapp** | `poetry run poe build:zipapp` | Creates `dist/apathetic_utils.pyz` (dependency-aware, importable) |
 | **PyPI package** | `poetry build && poetry publish` | Builds and uploads wheel & sdist |
 
