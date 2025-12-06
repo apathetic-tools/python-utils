@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.4.0 (2025-12-06)
+
+### Features
+
+- **paths**: Rename strip_common_prefix to shorten_path with multi-base support
+  ([`7cffe37`](https://github.com/apathetic-tools/python-utils/commit/7cffe37efd1c89ba8e807d1203c5c627eae8facb))
+
+
 ## v0.3.0 (2025-12-05)
 
 ### Continuous Integration
