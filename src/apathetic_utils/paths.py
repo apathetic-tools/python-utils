@@ -81,33 +81,76 @@ class ApatheticUtils_Internal_Paths:  # noqa: N801  # pyright: ignore[reportUnus
         return Path(*parts) if parts else Path()
 
     @staticmethod
-    def strip_common_prefix(path: str | Path, base: str | Path) -> str:
-        """Return `path` relative to `base`'s common prefix.
+    def shorten_path(
+        path: str | Path,
+        bases: str | Path | list[str | Path],
+    ) -> str:
+        """Return the shortest path relative to any base's common prefix.
+
+        Finds the longest shared prefix between `path` and each base path by
+        comparing their path parts, and returns the shortest remaining portion
+        of `path`. This works with any paths (files, directories, etc.) and does
+        not require one path to be under the other.
+
+        When the common prefix is only root ("/"), returns the absolute path
+        since a relative path from root is not useful.
 
         Example:
-            strip_common_prefix(
-                "/home/user/code/serger/src/serger/logs.py",
-                "/home/user/code/serger/tests/utils/patch_everywhere.py"
+            shorten_path(
+                "/home/user/code/serger/src/logs.py",
+                ["/home/user/code/serger/tests/utils/patch.py",
+                 "/home/user/code/serger/src"]
             )
-            → "src/serger/logs.py"
+            → "logs.py" (shortest: common prefix with src/)
+
+            shorten_path(
+                "/home/user/code/serger/src/logs.py",
+                "/home/user/code/serger/tests/utils/patch.py"
+            )
+            → "src/logs.py"
 
         Args:
             path: Path to make relative
-            base: Base path to find common prefix with
+            bases: Single base path or list of base paths to find common prefix with
 
         Returns:
-            Path relative to common prefix, or "." if no common prefix
+            Shortest path relative to common prefix, or absolute path if common
+            prefix is only root
         """
         p = Path(path).resolve()
-        b = Path(base).resolve()
 
-        # Split both into parts and find the longest shared prefix
-        common_len = 0
-        for a, c in zip_longest(p.parts, b.parts):
-            if a != c:
-                break
-            common_len += 1
+        # Normalize bases to a list
+        if isinstance(bases, (str, Path)):
+            bases_list: list[str | Path] = [bases]
+        else:
+            bases_list = bases
 
-        # Slice off the shared prefix
-        remaining = Path(*p.parts[common_len:])
-        return str(remaining) or "."
+        candidates: list[str] = []
+
+        for base in bases_list:
+            b = Path(base).resolve()
+
+            # Split both into parts and find the longest shared prefix
+            common_len = 0
+            for a, c in zip_longest(p.parts, b.parts):
+                if a != c:
+                    break
+                common_len += 1
+
+            # Slice off the shared prefix
+            remaining = Path(*p.parts[common_len:])
+            result = str(remaining) or "."
+
+            # If common prefix is only root (common_len <= 1), return absolute path
+            if common_len <= 1:
+                # Common prefix is only root, return absolute path
+                candidates.append(str(p))
+            else:
+                candidates.append(result)
+
+        if candidates:
+            # Return shortest result
+            return min(candidates, key=len)
+
+        # No bases provided, return absolute path
+        return str(p)

@@ -60,7 +60,7 @@ find_all_packages_under_path = apathetic_utils.find_all_packages_under_path
 get_glob_root = apathetic_utils.get_glob_root
 has_glob_chars = apathetic_utils.has_glob_chars
 normalize_path_string = apathetic_utils.normalize_path_string
-strip_common_prefix = apathetic_utils.strip_common_prefix
+shorten_path = apathetic_utils.shorten_path
 
 # System
 # CapturedOutput is a nested class in ApatheticUtils_Internal_Subprocess that
@@ -121,7 +121,7 @@ __all__ = [  # noqa: RUF022
     "get_glob_root",
     "has_glob_chars",
     "normalize_path_string",
-    "strip_common_prefix",
+    "shorten_path",
     # system
     "CapturedOutput",
     "capture_output",

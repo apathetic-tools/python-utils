@@ -13,7 +13,7 @@ Complete API documentation for Apathetic Python Utils.
 | Category | Functions |
 |----------|-----------|
 | **File Loading** | [`load_jsonc()`](#load_jsonc), [`load_toml()`](#load_toml) |
-| **Path Utilities** | [`normalize_path_string()`](#normalize_path_string), [`has_glob_chars()`](#has_glob_chars), [`get_glob_root()`](#get_glob_root), [`strip_common_prefix()`](#strip_common_prefix) |
+| **Path Utilities** | [`normalize_path_string()`](#normalize_path_string), [`has_glob_chars()`](#has_glob_chars), [`get_glob_root()`](#get_glob_root), [`shorten_path()`](#shorten_path) |
 | **Pattern Matching** | [`fnmatchcase_portable()`](#fnmatchcase_portable), [`is_excluded_raw()`](#is_excluded_raw) |
 | **Module Detection** | [`detect_packages_from_files()`](#detect_packages_from_files), [`find_all_packages_under_path()`](#find_all_packages_under_path) |
 | **System Detection** | [`is_ci()`](#is_ci), [`if_ci()`](#if_ci), [`is_running_under_pytest()`](#is_running_under_pytest), [`detect_runtime_mode()`](#detect_runtime_mode), [`capture_output()`](#capture_output), [`get_sys_version_info()`](#get_sys_version_info) |
@@ -197,35 +197,56 @@ root = get_glob_root("tests/unit/**/*.py")
 # Returns: Path("tests/unit")
 ```
 
-### strip_common_prefix
+### shorten_path
 
 ```python
-strip_common_prefix(path: str | Path, base: str | Path) -> str
+shorten_path(
+    path: str | Path,
+    bases: str | Path | list[str | Path]
+) -> str
 ```
 
-Return `path` relative to `base`'s common prefix.
+Return the shortest path relative to any base's common prefix.
 
-Finds the longest shared prefix between two paths and returns the remaining portion of `path` relative to that common prefix.
+Finds the longest shared prefix between `path` and each base path by comparing their path parts, and returns the shortest remaining portion of `path`. This works with any paths (files, directories, etc.) and does not require one path to be under the other.
+
+When the common prefix is only root (`"/"`), returns the absolute path since a relative path from root is not useful.
 
 **Parameters:**
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `path` | `str \| Path` | Path to make relative |
-| `base` | `str \| Path` | Base path to find common prefix with |
+| `path` | `str \| Path` | Path to shorten |
+| `bases` | `str \| Path \| list[str \| Path]` | Single base path or list of base paths to find common prefix with |
 
 **Returns:**
-- `str`: Path relative to common prefix, or `"."` if no common prefix
+- `str`: Shortest path relative to common prefix, or absolute path if common prefix is only root
 
-**Example:**
+**Examples:**
 ```python
-from apathetic_utils import strip_common_prefix
+from apathetic_utils import shorten_path
 
-result = strip_common_prefix(
+# Single base
+result = shorten_path(
     "/home/user/code/serger/src/serger/logs.py",
     "/home/user/code/serger/tests/utils/patch_everywhere.py"
 )
 # Returns: "src/serger/logs.py"
+
+# Multiple bases - returns shortest
+result = shorten_path(
+    "/home/user/code/serger/src/logs.py",
+    ["/home/user/code/serger/tests/utils/patch.py",
+     "/home/user/code/serger/src"]
+)
+# Returns: "logs.py" (shortest: common prefix with src/)
+
+# Returns absolute path when only root in common
+result = shorten_path(
+    "/var/lib/file.py",
+    ["/home/user", "/tmp"]
+)
+# Returns: "/var/lib/file.py" (absolute path)
 ```
 
 ## Pattern Matching
