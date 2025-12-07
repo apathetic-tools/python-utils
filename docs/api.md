@@ -17,7 +17,7 @@ Complete API documentation for Apathetic Python Utils.
 | **Pattern Matching** | [`fnmatchcase_portable()`](#fnmatchcase_portable), [`is_excluded_raw()`](#is_excluded_raw) |
 | **Module Detection** | [`detect_packages_from_files()`](#detect_packages_from_files), [`find_all_packages_under_path()`](#find_all_packages_under_path) |
 | **System Detection** | [`is_ci()`](#is_ci), [`if_ci()`](#if_ci), [`is_running_under_pytest()`](#is_running_under_pytest), [`detect_runtime_mode()`](#detect_runtime_mode), [`capture_output()`](#capture_output), [`get_sys_version_info()`](#get_sys_version_info) |
-| **Runtime Utilities** | [`find_zipbundler()`](#find_zipbundler), [`ensure_standalone_script_up_to_date()`](#ensure_standalone_script_up_to_date), [`ensure_zipapp_up_to_date()`](#ensure_zipapp_up_to_date), [`runtime_swap()`](#runtime_swap) |
+| **Runtime Utilities** | [`find_python_command()`](#find_python_command), [`ensure_stitched_script_up_to_date()`](#ensure_stitched_script_up_to_date), [`ensure_zipapp_up_to_date()`](#ensure_zipapp_up_to_date), [`runtime_swap()`](#runtime_swap) |
 | **Subprocess Utilities** | [`run_with_output()`](#run_with_output), [`run_with_separated_output()`](#run_with_separated_output) |
 | **Text Processing** | [`plural()`](#plural), [`remove_path_in_error_message()`](#remove_path_in_error_message) |
 | **Type Utilities** | [`safe_isinstance()`](#safe_isinstance), [`literal_to_set()`](#literal_to_set), [`cast_hint()`](#cast_hint), [`schema_from_typeddict()`](#schema_from_typeddict) |
@@ -572,45 +572,16 @@ print(f"Python {version[0]}.{version[1]}.{version[2]}")
 
 ## Runtime Utilities
 
-### find_zipbundler
+### ensure_stitched_script_up_to_date
 
 ```python
-find_zipbundler() -> list[str]
-```
-
-Find the zipbundler command.
-
-Returns a command list suitable for subprocess.run().
-Tries `python -m zipbundler` first, then `zipbundler` directly.
-
-Searches for zipbundler in:
-1. Python module path (via `python -m zipbundler`)
-2. System PATH
-3. Poetry virtual environment (if poetry is available)
-
-**Returns:**
-- `list[str]`: Command list (e.g., `["python", "-m", "zipbundler"]` or `["zipbundler"]`)
-
-**Raises:**
-- `RuntimeError`: If zipbundler is not found
-
-**Example:**
-```python
-from apathetic_utils import find_zipbundler
-
-zipbundler_cmd = find_zipbundler()
-# Returns: ["python", "-m", "zipbundler"] or ["zipbundler"] or ["/path/to/venv/bin/zipbundler"]
-```
-
-### ensure_standalone_script_up_to_date
-
-```python
-ensure_standalone_script_up_to_date(
+ensure_stitched_script_up_to_date(
     *,
     root: Path,
     script_name: str | None = None,
     package_name: str,
-    bundler_script: str | None = None
+    command_path: str | None = None,
+    log_level: str | None = None
 ) -> Path
 ```
 
@@ -626,6 +597,7 @@ Checks if the stitched script exists and is newer than all source files. If not,
 | `script_name` | `str \| None` | Optional name of the stitched script (without .py extension). If None, defaults to `package_name`. |
 | `package_name` | `str` | Name of the package (e.g., "apathetic_utils") |
 | `bundler_script` | `str \| None` | Optional path to bundler script (relative to root). If provided and exists, uses `python {bundler_script}`. Otherwise, uses `python -m serger --config .serger.jsonc`. |
+| `log_level` | `str \| None` | Optional log level to pass to serger. If provided, adds `--log-level=<log_level>` to the serger command. |
 
 **Returns:**
 - `Path`: Path to the stitched script
@@ -635,28 +607,35 @@ Checks if the stitched script exists and is newer than all source files. If not,
 
 **Example:**
 ```python
-from apathetic_utils import ensure_standalone_script_up_to_date
+from apathetic_utils import ensure_stitched_script_up_to_date
 from pathlib import Path
 
 # Using package_name as script_name (default)
-script_path = ensure_standalone_script_up_to_date(
+script_path = ensure_stitched_script_up_to_date(
     root=Path("."),
     package_name="my_package"
 )
 
 # Using a custom script name
-script_path = ensure_standalone_script_up_to_date(
+script_path = ensure_stitched_script_up_to_date(
     root=Path("."),
     script_name="my_script",
     package_name="my_package"
 )
 
 # Using a local bundler script
-script_path = ensure_standalone_script_up_to_date(
+script_path = ensure_stitched_script_up_to_date(
     root=Path("."),
     script_name="my_script",
     package_name="my_package",
-    bundler_script="bin/serger.py"
+    command_path="bin/serger.py"
+)
+
+# Using a custom log level
+script_path = ensure_stitched_script_up_to_date(
+    root=Path("."),
+    package_name="my_package",
+    log_level="debug"
 )
 ```
 
@@ -667,7 +646,9 @@ ensure_zipapp_up_to_date(
     *,
     root: Path,
     script_name: str | None = None,
-    package_name: str
+    package_name: str,
+    command_path: str | None = None,
+    log_level: str | None = None
 ) -> Path
 ```
 
@@ -682,6 +663,8 @@ Checks if the zipapp exists and is newer than all source files. If not, rebuilds
 | `root` | `Path` | Project root directory |
 | `script_name` | `str \| None` | Optional name of the zipapp (without .pyz extension). If None, defaults to `package_name`. |
 | `package_name` | `str` | Name of the package (e.g., "apathetic_utils") |
+| `command_path` | `str \| None` | Optional path to bundler script (relative to root). If provided and exists, uses `python {command_path}`. Otherwise, uses zipbundler. |
+| `log_level` | `str \| None` | Optional log level to pass to zipbundler. If provided, adds `--log-level=<log_level>` to the zipbundler command. |
 
 **Returns:**
 - `Path`: Path to the zipapp
@@ -706,6 +689,20 @@ zipapp_path = ensure_zipapp_up_to_date(
     script_name="my_script",
     package_name="my_package"
 )
+
+# Using a custom log level
+zipapp_path = ensure_zipapp_up_to_date(
+    root=Path("."),
+    package_name="my_package",
+    log_level="debug"
+)
+
+# Using a local bundler script
+zipapp_path = ensure_zipapp_up_to_date(
+    root=Path("."),
+    package_name="my_package",
+    command_path="bin/zipapp_builder.py"
+)
 ```
 
 ### runtime_swap
@@ -716,8 +713,10 @@ runtime_swap(
     root: Path,
     package_name: str,
     script_name: str | None = None,
-    bundler_script: str | None = None,
-    mode: str | None = None
+    stitch_command: str | None = None,
+    zipapp_command: str | None = None,
+    mode: str | None = None,
+    log_level: str | None = None
 ) -> bool
 ```
 
@@ -737,8 +736,10 @@ This ensures all test imports work transparently regardless of runtime mode.
 | `root` | `Path` | Project root directory |
 | `package_name` | `str` | Name of the package (e.g., "apathetic_utils") |
 | `script_name` | `str \| None` | Optional name of the stitched script (without extension). If None, defaults to `package_name`. |
-| `bundler_script` | `str \| None` | Optional path to bundler script (relative to root). If provided and exists, uses `python {bundler_script}`. Otherwise, uses `python -m serger --config .serger.jsonc`. |
+| `stitch_command` | `str \| None` | Optional path to bundler script for stitched mode (relative to root). If provided and exists, uses `python {stitch_command}`. Otherwise, uses `python -m serger --config .serger.jsonc`. |
+| `zipapp_command` | `str \| None` | Optional path to bundler script for zipapp mode (relative to root). If provided and exists, uses `python {zipapp_command}`. Otherwise, uses zipbundler. |
 | `mode` | `str \| None` | Runtime mode override. If None, reads from `RUNTIME_MODE` env var. |
+| `log_level` | `str \| None` | Optional log level to pass to serger and zipbundler. If provided, adds `--log-level=<log_level>` to their commands. |
 
 **Returns:**
 - `bool`: `True` if swap was performed, `False` if in package mode
@@ -767,13 +768,30 @@ runtime_swap(
     mode="stitched"
 )
 
-# Using a local bundler script
+# Using a local bundler script for stitched mode
 runtime_swap(
     root=Path(__file__).parent.parent,
     package_name="my_package",
     script_name="my_script",
-    bundler_script="bin/serger.py",
+    stitch_command="bin/serger.py",
     mode="stitched"
+)
+
+# Using a local bundler script for zipapp mode
+runtime_swap(
+    root=Path(__file__).parent.parent,
+    package_name="my_package",
+    script_name="my_script",
+    zipapp_command="bin/zipapp_builder.py",
+    mode="zipapp"
+)
+
+# Using a custom log level
+runtime_swap(
+    root=Path(__file__).parent.parent,
+    package_name="my_package",
+    mode="stitched",
+    log_level="debug"
 )
 ```
 

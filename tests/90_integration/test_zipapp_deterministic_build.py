@@ -61,7 +61,13 @@ testpkg = "testpkg.module:main"
     (tmp_path / "dist").mkdir(exist_ok=True)
 
     # --- execute: first build ---
-    zipbundler_cmd = apathetic_utils.find_zipbundler()
+    zipbundler_cmd = apathetic_utils.find_python_command(
+        "zipbundler",
+        error_hint=(
+            "zipbundler not found. "
+            "Ensure zipbundler is installed: poetry install --with dev"
+        ),
+    )
     result1 = subprocess.run(  # noqa: S603
         [
             *zipbundler_cmd,
@@ -171,7 +177,13 @@ def test_zipapp_build_produces_valid_file() -> None:
     zipapp_file.parent.mkdir(parents=True, exist_ok=True)
 
     # --- execute: build zipapp ---
-    zipbundler_cmd = apathetic_utils.find_zipbundler()
+    zipbundler_cmd = apathetic_utils.find_python_command(
+        "zipbundler",
+        error_hint=(
+            "zipbundler not found. "
+            "Ensure zipbundler is installed: poetry install --with dev"
+        ),
+    )
     result = subprocess.run(  # noqa: S603
         [
             *zipbundler_cmd,
@@ -232,7 +244,13 @@ def test_zipapp_build_is_deterministic() -> None:
     zipapp_file.parent.mkdir(parents=True, exist_ok=True)
 
     # --- execute: first build ---
-    zipbundler_cmd = apathetic_utils.find_zipbundler()
+    zipbundler_cmd = apathetic_utils.find_python_command(
+        "zipbundler",
+        error_hint=(
+            "zipbundler not found. "
+            "Ensure zipbundler is installed: poetry install --with dev"
+        ),
+    )
     result1 = subprocess.run(  # noqa: S603
         [
             *zipbundler_cmd,

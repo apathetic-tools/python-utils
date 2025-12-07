@@ -43,7 +43,13 @@ def test_zipapp_import_semantics() -> None:
     zipapp_file.parent.mkdir(parents=True, exist_ok=True)
 
     # --- execute: build zipapp ---
-    zipbundler_cmd = apathetic_utils.find_zipbundler()
+    zipbundler_cmd = apathetic_utils.find_python_command(
+        "zipbundler",
+        error_hint=(
+            "zipbundler not found. "
+            "Ensure zipbundler is installed: poetry install --with dev"
+        ),
+    )
     result = subprocess.run(  # noqa: S603
         [
             *zipbundler_cmd,

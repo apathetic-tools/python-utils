@@ -99,6 +99,140 @@ class SubprocessResultWithBypass:
 class ApatheticUtils_Internal_Subprocess:  # noqa: N801  # pyright: ignore[reportUnusedClass]
     """Mixin class providing subprocess utilities for testing."""
 
+    @staticmethod
+    def _find_venv_paths() -> list[Path]:
+        """Find paths to common virtual environment providers.
+
+        Returns:
+            List of venv paths found (Poetry, pipenv, virtualenv/venv, conda)
+        """
+        venv_paths: list[Path] = []
+
+        # 1. Poetry
+        poetry_cmd = shutil.which("poetry")
+        if poetry_cmd:
+            try:
+                venv_path_result = subprocess.run(  # noqa: S603
+                    [poetry_cmd, "env", "info", "--path"],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                venv_path = Path(venv_path_result.stdout.strip())
+                if venv_path.exists():
+                    venv_paths.append(venv_path)
+            except Exception:  # noqa: BLE001, S110
+                pass
+
+        # 2. pipenv
+        pipenv_cmd = shutil.which("pipenv")
+        if pipenv_cmd:
+            try:
+                venv_path_result = subprocess.run(  # noqa: S603
+                    [pipenv_cmd, "--venv"],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                venv_path = Path(venv_path_result.stdout.strip())
+                if venv_path.exists():
+                    venv_paths.append(venv_path)
+            except Exception:  # noqa: BLE001, S110
+                pass
+
+        # 3. virtualenv/venv (via VIRTUAL_ENV)
+        virtual_env = os.getenv("VIRTUAL_ENV")
+        if virtual_env:
+            venv_path = Path(virtual_env)
+            if venv_path.exists():
+                venv_paths.append(venv_path)
+
+        # 4. conda (via CONDA_PREFIX)
+        conda_prefix = os.getenv("CONDA_PREFIX")
+        if conda_prefix:
+            venv_path = Path(conda_prefix)
+            if venv_path.exists():
+                venv_paths.append(venv_path)
+
+        return venv_paths
+
+    @staticmethod
+    def find_python_command(
+        command: str,
+        *,
+        error_hint: str | None = None,
+    ) -> list[str]:
+        """Find a Python command (module or executable).
+
+        Returns a command list suitable for subprocess.run().
+        Tries `python -m <command>` first, then the command directly.
+
+        Also searches in common virtual environment providers:
+        - Poetry (via `poetry env info --path`)
+        - pipenv (via `pipenv --venv`)
+        - virtualenv/venv (via `VIRTUAL_ENV` environment variable)
+        - conda (via `CONDA_PREFIX` environment variable)
+
+        Args:
+            command: Name of the command to find (e.g., "zipbundler", "serger")
+            error_hint: Optional hint message to include in error if command not found.
+                If None, generates a default message.
+
+        Returns:
+            Command list (e.g., ["python", "-m", "zipbundler"] or ["zipbundler"])
+
+        Raises:
+            RuntimeError: If the command is not found
+
+        Example:
+            # Find zipbundler
+            zipbundler_cmd = find_python_command("zipbundler")
+            # Returns: ["python", "-m", "zipbundler"] or ["zipbundler"] or
+            # ["/path/to/venv/bin/zipbundler"]
+
+            # Find serger
+            serger_cmd = find_python_command("serger")
+            # Returns: ["python", "-m", "serger"] or ["serger"] or
+            # ["/path/to/venv/bin/serger"]
+        """
+        # Try python -m <command> first (most reliable)
+        try:
+            result = subprocess.run(  # noqa: S603
+                [sys.executable, "-m", command, "--help"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if result.returncode == 0:
+                return [sys.executable, "-m", command]
+        except Exception:  # noqa: BLE001, S110
+            pass
+
+        # Fall back to command directly in PATH
+        cmd_path = shutil.which(command)
+        if cmd_path:
+            return [cmd_path]
+
+        # Try to find in common virtual environment providers
+        venv_paths = ApatheticUtils_Internal_Subprocess._find_venv_paths()
+
+        # Check each venv for the command
+        for venv_path in venv_paths:
+            # Try both bin/ and Scripts/ (Windows)
+            for bin_dir_name in ("bin", "Scripts"):
+                bin_dir = venv_path / bin_dir_name
+                cmd_in_venv = bin_dir / command
+                if cmd_in_venv.exists():
+                    return [str(cmd_in_venv)]
+
+        # Command not found
+        if error_hint is None:
+            error_hint = (
+                f"{command} not found. "
+                f"Ensure {command} is installed in your virtual environment."
+            )
+        raise RuntimeError(error_hint)
+
     @dataclass
     class CapturedOutput:
         """Captured stdout, stderr, and merged streams."""

@@ -15,7 +15,7 @@ Some of these we just want to consider, and may not want to implement.
 
 
 ## 🔌 API
-- None currently
+- Remove `__STANDALONE__` support from `detect_runtime_mode()` once all apps are converted to use `__STITCHED__`
 
 
 ## 📚 Documentation

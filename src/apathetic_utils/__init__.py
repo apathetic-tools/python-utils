@@ -76,11 +76,9 @@ else:
 capture_output = apathetic_utils.capture_output
 create_version_info = apathetic_utils.create_version_info
 detect_runtime_mode = apathetic_utils.detect_runtime_mode
-ensure_standalone_script_up_to_date = (
-    apathetic_utils.ensure_standalone_script_up_to_date
-)
+ensure_stitched_script_up_to_date = apathetic_utils.ensure_stitched_script_up_to_date
 ensure_zipapp_up_to_date = apathetic_utils.ensure_zipapp_up_to_date
-find_zipbundler = apathetic_utils.find_zipbundler
+find_python_command = apathetic_utils.find_python_command
 get_sys_version_info = apathetic_utils.get_sys_version_info
 is_running_under_pytest = apathetic_utils.is_running_under_pytest
 run_with_output = apathetic_utils.run_with_output
@@ -103,7 +101,6 @@ schema_from_typeddict = apathetic_utils.schema_from_typeddict
 
 
 __all__ = [  # noqa: RUF022
-    "apathetic_utils",
     # ci
     "CI_ENV_VARS",
     "if_ci",
@@ -127,9 +124,9 @@ __all__ = [  # noqa: RUF022
     "capture_output",
     "create_version_info",
     "detect_runtime_mode",
-    "ensure_standalone_script_up_to_date",
+    "ensure_stitched_script_up_to_date",
     "ensure_zipapp_up_to_date",
-    "find_zipbundler",
+    "find_python_command",
     "get_sys_version_info",
     "is_running_under_pytest",
     "run_with_output",

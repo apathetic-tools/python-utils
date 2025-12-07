@@ -6,7 +6,6 @@ from __future__ import annotations
 import importlib
 import importlib.util
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -16,6 +15,7 @@ import pytest
 from apathetic_logging import makeSafeTrace
 
 from .modules import ApatheticUtils_Internal_Modules
+from .subprocess_utils import ApatheticUtils_Internal_Subprocess
 
 
 if TYPE_CHECKING:
@@ -36,6 +36,7 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
             - "frozen" if running as a frozen executable
             - "zipapp" if running as a .pyz zipapp
             - "stitched" if running as a stitched single-file script
+                (detects both __STITCHED__ and __STANDALONE__ markers)
             - "package" if running from package
         """
         if getattr(sys, "frozen", False):
@@ -50,83 +51,106 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
             if isinstance(zipapp_path, str) and zipapp_path.endswith(".pyz"):
                 return "zipapp"
         # Check for stitched mode in multiple locations
+        # Supports both __STITCHED__ and __STANDALONE__ for backward compatibility
         # 1. Current module's globals (for when called from within stitched script)
         # This works when all files are stitched into a single namespace
-        if "__STITCHED__" in globals():
+        if "__STITCHED__" in globals() or "__STANDALONE__" in globals():
             return "stitched"
         # 2. Check package module's globals (when loaded via importlib)
         # The stitched script is loaded as the package
         pkg_mod = sys.modules.get(package_name)
-        if pkg_mod is not None and hasattr(pkg_mod, "__STITCHED__"):
+        if pkg_mod is not None and (
+            hasattr(pkg_mod, "__STITCHED__") or hasattr(pkg_mod, "__STANDALONE__")
+        ):
             return "stitched"
         # 3. Check __main__ module's globals (for script execution)
         if "__main__" in sys.modules:
             main_mod = sys.modules["__main__"]
-            if hasattr(main_mod, "__STITCHED__"):
+            if hasattr(main_mod, "__STITCHED__") or hasattr(main_mod, "__STANDALONE__"):
                 return "stitched"
         return "package"
 
     @staticmethod
-    def find_zipbundler() -> list[str]:
-        """Find the zipbundler command.
+    def _check_needs_rebuild(output_path: Path, src_dir: Path) -> bool:
+        """Check if output file needs to be rebuilt.
 
-        Returns a command list suitable for subprocess.run().
-        Tries python -m zipbundler first, then zipbundler directly.
+        Args:
+            output_path: Path to the output file
+            src_dir: Directory containing source files to check
 
         Returns:
-            Command list (e.g., ["python", "-m", "zipbundler"] or ["zipbundler"])
-
-        Raises:
-            RuntimeError: If zipbundler is not found
+            True if rebuild is needed, False otherwise
         """
-        # Try python -m zipbundler first (most reliable)
-        try:
-            result = subprocess.run(  # noqa: S603
-                [sys.executable, "-m", "zipbundler", "--help"],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            if result.returncode == 0:
-                return [sys.executable, "-m", "zipbundler"]
-        except Exception:  # noqa: BLE001, S110
-            pass
-
-        # Fall back to zipbundler directly
-        zipbundler_path = shutil.which("zipbundler")
-        if zipbundler_path:
-            return [zipbundler_path]
-
-        # If not in PATH, try to find it in the poetry venv
-        poetry_cmd = shutil.which("poetry")
-        if poetry_cmd:
-            try:
-                venv_path_result = subprocess.run(  # noqa: S603
-                    [poetry_cmd, "env", "info", "--path"],
-                    capture_output=True,
-                    text=True,
-                    check=True,
-                )
-                venv_path = Path(venv_path_result.stdout.strip())
-                zipbundler_in_venv = venv_path / "bin" / "zipbundler"
-                if zipbundler_in_venv.exists():
-                    return [str(zipbundler_in_venv)]
-            except Exception:  # noqa: BLE001, S110
-                # Poetry command failed or venv path invalid - continue to error
-                pass
-        msg = (
-            "zipbundler not found. "
-            "Ensure zipbundler is installed: poetry install --with dev"
-        )
-        raise RuntimeError(msg)
+        if not output_path.exists():
+            return True
+        output_mtime_ns = output_path.stat().st_mtime_ns
+        for src_file in src_dir.rglob("*.py"):
+            if src_file.stat().st_mtime_ns > output_mtime_ns:
+                return True
+        return False
 
     @staticmethod
-    def ensure_standalone_script_up_to_date(
+    def _validate_build_output(output_path: Path, build_type: str) -> None:
+        """Validate that build output was created successfully.
+
+        Args:
+            output_path: Path to the output file
+            build_type: Type of build (e.g., "stitched script", "zipapp")
+
+        Raises:
+            RuntimeError: If output file doesn't exist after build
+        """
+        # Force mtime update in case contents identical
+        output_path.touch()
+        if not output_path.exists():
+            msg = f"❌ Failed to generate {build_type}."
+            raise RuntimeError(msg)
+
+    @staticmethod
+    def _run_bundler_script(
+        root: Path,
+        command_path: str | None,
+        output_path: Path,
+        build_type: str,
+    ) -> bool:
+        """Run a custom bundler script if provided and exists.
+
+        Args:
+            root: Project root directory
+            command_path: Optional path to bundler script (relative to root)
+            output_path: Path to the expected output file
+            build_type: Type of build (e.g., "stitched script", "zipapp")
+
+        Returns:
+            True if bundler script was run successfully,
+            False if not provided or doesn't exist
+        """
+        if command_path is None:
+            return False
+
+        bundler_path = root / command_path
+        if not bundler_path.exists():
+            return False
+
+        print(  # noqa: T201
+            f"⚙️  Rebuilding {build_type} (python {command_path})..."
+        )
+        subprocess.run(  # noqa: S603
+            [sys.executable, str(bundler_path)],
+            check=True,
+            cwd=root,
+        )
+        ApatheticUtils_Internal_Runtime._validate_build_output(output_path, build_type)
+        return True
+
+    @staticmethod
+    def ensure_stitched_script_up_to_date(
         *,
         root: Path,
         script_name: str | None = None,
         package_name: str,
-        bundler_script: str | None = None,
+        command_path: str | None = None,
+        log_level: str | None = None,
     ) -> Path:
         """Rebuild stitched script if missing or outdated.
 
@@ -135,9 +159,11 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
             script_name: Optional name of the stitched script (without .py extension).
                 If None, defaults to package_name.
             package_name: Name of the package (e.g., "apathetic_utils")
-            bundler_script: Optional path to bundler script (relative to root).
-                If provided and exists, uses `python {bundler_script}`.
+            command_path: Optional path to bundler script (relative to root).
+                If provided and exists, uses `python {command_path}`.
                 Otherwise, uses `python -m serger --config .serger.jsonc`.
+            log_level: Optional log level to pass to serger.
+                If provided, adds `--log-level=<log_level>` to the serger command.
 
         Returns:
             Path to the stitched script
@@ -147,36 +173,19 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
         bin_path = root / "dist" / f"{actual_script_name}.py"
         src_dir = root / "src" / package_name
 
-        # If the output file doesn't exist or is older than any source file → rebuild.
-        needs_rebuild = not bin_path.exists()
-        if not needs_rebuild:
-            bin_mtime_ns = bin_path.stat().st_mtime_ns
-            for src_file in src_dir.rglob("*.py"):
-                if src_file.stat().st_mtime_ns > bin_mtime_ns:
-                    needs_rebuild = True
-                    break
+        # Check if rebuild is needed
+        needs_rebuild = ApatheticUtils_Internal_Runtime._check_needs_rebuild(
+            bin_path, src_dir
+        )
 
         if needs_rebuild:
-            # Check if bundler_script is provided and exists
-            if bundler_script is not None:
-                bundler_path = root / bundler_script
-                if bundler_path.exists():
-                    print(  # noqa: T201
-                        f"⚙️  Rebuilding stitched bundle (python {bundler_script})..."
-                    )
-                    subprocess.run(  # noqa: S603
-                        [sys.executable, str(bundler_path)],
-                        check=True,
-                        cwd=root,
-                    )
-                    # force mtime update in case contents identical
-                    bin_path.touch()
-                    if not bin_path.exists():
-                        msg = "❌ Failed to generate stitched script."
-                        raise RuntimeError(msg)
-                    return bin_path
+            # Check if command_path is provided and exists
+            if ApatheticUtils_Internal_Runtime._run_bundler_script(
+                root, command_path, bin_path, "stitched script"
+            ):
+                return bin_path
 
-            # Fall back to python -m serger
+            # Fall back to using serger (found via find_python_command)
             config_path = root / ".serger.jsonc"
             if not config_path.exists():
                 msg = (
@@ -185,23 +194,25 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
                 )
                 raise RuntimeError(msg)
 
-            print("⚙️  Rebuilding stitched bundle (python -m serger)...")  # noqa: T201
+            print("⚙️  Rebuilding stitched bundle (serger)...")  # noqa: T201
+            serger_cmd = ApatheticUtils_Internal_Subprocess.find_python_command(
+                "serger",
+                error_hint=(
+                    "serger not found. "
+                    "Ensure serger is installed in your virtual environment."
+                ),
+            )
+            serger_cmd.extend(["--config", str(config_path)])
+            if log_level is not None:
+                serger_cmd.extend(["--log-level", log_level])
             subprocess.run(  # noqa: S603
-                [
-                    sys.executable,
-                    "-m",
-                    "serger",
-                    "--config",
-                    str(config_path),
-                ],
+                serger_cmd,
                 check=True,
                 cwd=root,
             )
-            # force mtime update in case contents identical
-            bin_path.touch()
-            if not bin_path.exists():
-                msg = "❌ Failed to generate stitched script."
-                raise RuntimeError(msg)
+            ApatheticUtils_Internal_Runtime._validate_build_output(
+                bin_path, "stitched script"
+            )
 
         return bin_path
 
@@ -211,6 +222,8 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
         root: Path,
         script_name: str | None = None,
         package_name: str,
+        command_path: str | None = None,
+        log_level: str | None = None,
     ) -> Path:
         """Rebuild zipapp if missing or outdated.
 
@@ -219,6 +232,11 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
             script_name: Optional name of the zipapp (without .pyz extension).
                 If None, defaults to package_name.
             package_name: Name of the package (e.g., "apathetic_utils")
+            command_path: Optional path to bundler script (relative to root).
+                If provided and exists, uses `python {command_path}`.
+                Otherwise, uses zipbundler.
+            log_level: Optional log level to pass to zipbundler.
+                If provided, adds `--log-level=<log_level>` to the zipbundler command.
 
         Returns:
             Path to the zipapp
@@ -228,36 +246,46 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
         zipapp_path = root / "dist" / f"{actual_script_name}.pyz"
         src_dir = root / "src" / package_name
 
-        # If the output file doesn't exist or is older than any source file → rebuild.
-        needs_rebuild = not zipapp_path.exists()
-        if not needs_rebuild:
-            zipapp_mtime_ns = zipapp_path.stat().st_mtime_ns
-            for src_file in src_dir.rglob("*.py"):
-                if src_file.stat().st_mtime_ns > zipapp_mtime_ns:
-                    needs_rebuild = True
-                    break
+        # Check if rebuild is needed
+        needs_rebuild = ApatheticUtils_Internal_Runtime._check_needs_rebuild(
+            zipapp_path, src_dir
+        )
 
         if needs_rebuild:
-            zipbundler_cmd = ApatheticUtils_Internal_Runtime.find_zipbundler()
+            # Check if command_path is provided and exists
+            if ApatheticUtils_Internal_Runtime._run_bundler_script(
+                root, command_path, zipapp_path, "zipapp"
+            ):
+                return zipapp_path
+
+            # Fall back to using zipbundler
+            zipbundler_cmd = ApatheticUtils_Internal_Subprocess.find_python_command(
+                "zipbundler",
+                error_hint=(
+                    "zipbundler not found. "
+                    "Ensure zipbundler is installed: poetry install --with dev"
+                ),
+            )
             print("⚙️  Rebuilding zipapp (zipbundler)...")  # noqa: T201
+            cmd = [
+                *zipbundler_cmd,
+                "-m",
+                package_name,
+                "-o",
+                str(zipapp_path),
+                "-q",
+                ".",
+            ]
+            if log_level is not None:
+                cmd.extend(["--log-level", log_level])
             subprocess.run(  # noqa: S603
-                [
-                    *zipbundler_cmd,
-                    "-m",
-                    package_name,
-                    "-o",
-                    str(zipapp_path),
-                    "-q",
-                    ".",
-                ],
+                cmd,
                 cwd=root,
                 check=True,
             )
-            # force mtime update in case contents identical
-            zipapp_path.touch()
-            if not zipapp_path.exists():
-                msg = "❌ Failed to generate zipapp."
-                raise RuntimeError(msg)
+            ApatheticUtils_Internal_Runtime._validate_build_output(
+                zipapp_path, "zipapp"
+            )
 
         return zipapp_path
 
@@ -267,8 +295,10 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
         root: Path,
         package_name: str,
         script_name: str | None = None,
-        bundler_script: str | None = None,
+        stitch_command: str | None = None,
+        zipapp_command: str | None = None,
         mode: str | None = None,
+        log_level: str | None = None,
     ) -> bool:
         """Pre-import hook — runs before any tests or plugins are imported.
 
@@ -282,12 +312,18 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
         Args:
             root: Project root directory
             package_name: Name of the package (e.g., "apathetic_utils")
-            script_name: Optional name of the stitched script (without extension).
+            script_name: Optional name of the distributed script (without extension).
                 If None, defaults to package_name.
-            bundler_script: Optional path to bundler script (relative to root).
-                If provided and exists, uses `python {bundler_script}`.
-                Otherwise, uses `python -m serger --config .serger.jsonc`.
+            stitch_command: Optional path to bundler script for stitched mode
+                (relative to root). If provided and exists, uses
+                `python {stitch_command}`. Otherwise, uses
+                `python -m serger --config .serger.jsonc`.
+            zipapp_command: Optional path to bundler script for zipapp mode
+                (relative to root). If provided and exists, uses
+                `python {zipapp_command}`. Otherwise, uses zipbundler.
             mode: Runtime mode override. If None, reads from RUNTIME_MODE env var.
+            log_level: Optional log level to pass to serger and zipbundler.
+                If provided, adds `--log-level=<log_level>` to their commands.
 
         Returns:
             True if swap was performed, False if in package mode
@@ -319,11 +355,11 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
 
         if mode == "stitched":
             return ApatheticUtils_Internal_Runtime._load_stitched_mode(
-                root, package_name, script_name, bundler_script, safe_trace
+                root, package_name, script_name, stitch_command, safe_trace, log_level
             )
         if mode == "zipapp":
             return ApatheticUtils_Internal_Runtime._load_zipapp_mode(
-                root, package_name, script_name, safe_trace
+                root, package_name, script_name, zipapp_command, safe_trace, log_level
             )
 
         # Unknown mode
@@ -335,25 +371,27 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
         root: Path,
         package_name: str,
         script_name: str | None,
-        bundler_script: str | None,
+        command_path: str | None,
         safe_trace: Any,
+        log_level: str | None = None,
     ) -> bool:
         """Load stitched single-file script mode."""
-        bin_path = ApatheticUtils_Internal_Runtime.ensure_standalone_script_up_to_date(
+        bin_path = ApatheticUtils_Internal_Runtime.ensure_stitched_script_up_to_date(
             root=root,
             script_name=script_name,
             package_name=package_name,
-            bundler_script=bundler_script,
+            command_path=command_path,
+            log_level=log_level,
         )
 
         if not bin_path.exists():
-            if bundler_script is None:
+            if command_path is None:
                 hint_msg = (
                     "Hint: run the bundler (e.g. `poetry run poe build:stitched`)."
                 )
             else:
                 hint_msg = (
-                    f"Hint: run the bundler (e.g. `python {bundler_script}` "
+                    f"Hint: run the bundler (e.g. `python {command_path}` "
                     f"or `poetry run poe build:stitched`)."
                 )
             xmsg = (
@@ -391,7 +429,9 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
         root: Path,
         package_name: str,
         script_name: str | None,
+        command_path: str | None,
         safe_trace: Any,
+        log_level: str | None = None,
     ) -> bool:
         """Load zipapp mode.
 
@@ -402,6 +442,8 @@ class ApatheticUtils_Internal_Runtime:  # noqa: N801  # pyright: ignore[reportUn
             root=root,
             script_name=script_name,
             package_name=package_name,
+            command_path=command_path,
+            log_level=log_level,
         )
 
         if not zipapp_path.exists():

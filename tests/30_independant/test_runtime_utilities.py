@@ -1,7 +1,7 @@
 # tests/30_independant/test_runtime_utilities.py
 """Tests for runtime utility functions.
 
-Tests for ensure_standalone_script_up_to_date, ensure_zipapp_up_to_date,
+Tests for ensure_stitched_script_up_to_date, ensure_zipapp_up_to_date,
 and runtime_swap functions, including optional script_name parameter behavior.
 """
 
@@ -20,7 +20,7 @@ _runtime = amod_utils_runtime.ApatheticUtils_Internal_Runtime
 
 
 # ---------------------------------------------------------------------------
-# Tests for ensure_standalone_script_up_to_date
+# Tests for ensure_stitched_script_up_to_date
 # ---------------------------------------------------------------------------
 
 
@@ -30,11 +30,11 @@ _runtime = amod_utils_runtime.ApatheticUtils_Internal_Runtime
         "Remove this marker once the latest serger release is available."
     ),
 )
-def test_ensure_standalone_script_up_to_date_with_script_name(
+def test_ensure_stitched_script_up_to_date_with_script_name(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Test ensure_standalone_script_up_to_date with explicit script_name."""
+    """Test ensure_stitched_script_up_to_date with explicit script_name."""
     # --- setup ---
     pkg_dir = tmp_path / "src" / "testpkg"
     pkg_dir.mkdir(parents=True)
@@ -53,7 +53,7 @@ def test_ensure_standalone_script_up_to_date_with_script_name(
     monkeypatch.chdir(tmp_path)
 
     # --- execute ---
-    script_path = _runtime.ensure_standalone_script_up_to_date(
+    script_path = _runtime.ensure_stitched_script_up_to_date(
         root=tmp_path,
         script_name="custom_script",
         package_name="testpkg",
@@ -71,11 +71,11 @@ def test_ensure_standalone_script_up_to_date_with_script_name(
         "Remove this marker once the latest serger release is available."
     ),
 )
-def test_ensure_standalone_script_up_to_date_without_script_name(
+def test_ensure_stitched_script_up_to_date_without_script_name(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Test ensure_standalone_script_up_to_date defaults script_name to package_name."""
+    """Test ensure_stitched_script_up_to_date defaults script_name to package_name."""
     # --- setup ---
     pkg_dir = tmp_path / "src" / "testpkg"
     pkg_dir.mkdir(parents=True)
@@ -94,7 +94,7 @@ def test_ensure_standalone_script_up_to_date_without_script_name(
     monkeypatch.chdir(tmp_path)
 
     # --- execute ---
-    script_path = _runtime.ensure_standalone_script_up_to_date(
+    script_path = _runtime.ensure_stitched_script_up_to_date(
         root=tmp_path,
         package_name="testpkg",
         # script_name=None (default)
@@ -107,11 +107,11 @@ def test_ensure_standalone_script_up_to_date_without_script_name(
     assert script_path.exists()
 
 
-def test_ensure_standalone_script_up_to_date_with_bundler_script(
+def test_ensure_stitched_script_up_to_date_with_command_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Test ensure_standalone_script_up_to_date with local bundler script."""
+    """Test ensure_stitched_script_up_to_date with local bundler script."""
     # --- setup ---
     pkg_dir = tmp_path / "src" / "testpkg"
     pkg_dir.mkdir(parents=True)
@@ -121,8 +121,8 @@ def test_ensure_standalone_script_up_to_date_with_bundler_script(
     # Create a mock bundler script that reads from .serger.jsonc
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    bundler_script = bin_dir / "serger.py"
-    bundler_script.write_text(
+    command_path = bin_dir / "serger.py"
+    command_path.write_text(
         """#!/usr/bin/env python3
 import json
 import sys
@@ -141,7 +141,7 @@ out_path.parent.mkdir(parents=True, exist_ok=True)
 out_path.write_text("# Mock bundled script\\n")
 """
     )
-    bundler_script.chmod(0o755)
+    command_path.chmod(0o755)
 
     config = tmp_path / ".serger.jsonc"
     config_data = {
@@ -155,10 +155,10 @@ out_path.write_text("# Mock bundled script\\n")
     monkeypatch.chdir(tmp_path)
 
     # --- execute ---
-    script_path = _runtime.ensure_standalone_script_up_to_date(
+    script_path = _runtime.ensure_stitched_script_up_to_date(
         root=tmp_path,
         package_name="testpkg",
-        bundler_script="bin/serger.py",
+        command_path="bin/serger.py",
     )
 
     # --- verify ---
