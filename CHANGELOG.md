@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.4.1 (2025-12-07)
+
+### Bug Fixes
+
+- **testing**: Update docstring parameter descriptions
+  ([`aed5258`](https://github.com/apathetic-tools/python-utils/commit/aed525846849fe7bdcb7611255dee1eb63c91373))
+
+
 ## v0.4.0 (2025-12-06)
 
 ### Features
