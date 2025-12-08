@@ -87,6 +87,7 @@ runtime_swap = apathetic_utils.runtime_swap
 
 # Testing
 create_mock_superclass_test = apathetic_utils.create_mock_superclass_test
+detect_module_runtime_mode = apathetic_utils.detect_module_runtime_mode
 patch_everywhere = apathetic_utils.patch_everywhere
 
 # Text
@@ -134,6 +135,7 @@ __all__ = [  # noqa: RUF022
     "runtime_swap",
     # testing
     "create_mock_superclass_test",
+    "detect_module_runtime_mode",
     "patch_everywhere",
     # text
     "plural",

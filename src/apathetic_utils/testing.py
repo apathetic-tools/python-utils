@@ -171,6 +171,61 @@ class ApatheticUtils_Internal_Testing:  # noqa: N801  # pyright: ignore[reportUn
                     raise AssertionError(msg)
 
     @staticmethod
+    def detect_module_runtime_mode(
+        mod: ModuleType,
+        *,
+        stitch_hints: set[str] | None = None,
+    ) -> str:
+        """Detect the runtime mode of a specific module.
+
+        Determines whether a module was built as part of a stitched single-file
+        script, zipapp archive, or standard package by checking for markers and
+        file path attributes.
+
+        This check prioritizes marker-based detection (most reliable) but falls
+        back to path heuristics for edge cases. It works correctly in:
+        - Stitched mode: Modules loaded from a .py stitched script
+        - Zipapp mode: Modules loaded from a .pyz zipapp archive
+        - Package mode: Regular package modules
+        - Mixed scenarios: When testing a stitched module while running in package mode
+
+        Args:
+            mod: Module to check
+            stitch_hints: Optional set of path hints to identify stitched modules.
+                Defaults to {"/dist/", "stitched"}. Used as fallback when markers
+                are not present.
+
+        Returns:
+            - "stitched" if module has __STITCHED__ or __STANDALONE__ marker,
+              or __file__ path matches stitch_hints
+            - "zipapp" if module __file__ indicates zipapp (contains .pyz)
+            - "package" for regular package modules
+
+        Raises:
+            TypeError: If mod is not a ModuleType
+        """
+        if stitch_hints is None:
+            stitch_hints = {"/dist/", "stitched"}
+
+        if not isinstance(mod, ModuleType):  # pyright: ignore[reportUnnecessaryIsInstance]
+            msg = f"Expected ModuleType, got {type(mod).__name__}"
+            raise TypeError(msg)
+
+        # Check for stitched markers first (most reliable)
+        if hasattr(mod, "__STITCHED__") or hasattr(mod, "__STANDALONE__"):
+            return "stitched"
+
+        # Check for zipapp and stitched by looking at __file__ path
+        file_path = getattr(mod, "__file__", "") or ""
+        if ".pyz/" in file_path or file_path.endswith(".pyz"):
+            return "zipapp"
+        if any(h in file_path for h in stitch_hints):
+            return "stitched"
+
+        # Default to package mode
+        return "package"
+
+    @staticmethod
     def patch_everywhere(  # noqa: C901, PLR0912, PLR0915
         mp: pytest.MonkeyPatch,
         mod_env: ModuleType | Any,
@@ -263,7 +318,26 @@ class ApatheticUtils_Internal_Testing:  # noqa: N801  # pyright: ignore[reportUn
         # __dict__). We need to patch functions' __globals__ to intercept direct
         # calls (e.g., func() vs mod.func()). This works in both stitched and
         # non-stitched modes.
-        if func_existed and isinstance(mod_env, ModuleType) and func is not None:
+
+        # However, for stitched modules, all functions share a single __globals__
+        # dict because they're all defined in one file. Patching __globals__ for
+        # stitched modules corrupts the shared namespace across multiple test runs.
+        # Module-level setattr is sufficient for stitched builds.
+        is_stitched_or_zipapp = False
+        if isinstance(mod_env, ModuleType):
+            # Check if module is stitched or zipapp
+            mode = ApatheticUtils_Internal_Testing.detect_module_runtime_mode(
+                mod_env,
+                stitch_hints=stitch_hints,
+            )
+            is_stitched_or_zipapp = mode in ("stitched", "zipapp")
+
+        if (
+            func_existed
+            and isinstance(mod_env, ModuleType)
+            and func is not None
+            and not is_stitched_or_zipapp
+        ):
             _apathetic_testing_priv_patch_globals_for_direct_calls(
                 mp=mp,
                 mod=mod_env,
@@ -304,31 +378,23 @@ class ApatheticUtils_Internal_Testing:  # noqa: N801  # pyright: ignore[reportUn
                         did_patch = True
 
             # 2) Single-file/zipapp case: reloaded stitched modules or zipapp modules
-            #    whose __file__ path matches heuristic
-            path = getattr(m, "__file__", "") or ""
-            # Check for stitched modules (path contains hints) or zipapp modules
-            is_stitched_or_zipapp = (
-                any(h in path for h in stitch_hints)
-                or ".pyz/" in path
-                or path.endswith(".pyz")
+            #    Check for __STITCHED__ marker first (most reliable), then fallback
+            #    to path heuristics
+            mode = ApatheticUtils_Internal_Testing.detect_module_runtime_mode(
+                m,
+                stitch_hints=stitch_hints,
             )
+            is_stitched_or_zipapp = mode in ("stitched", "zipapp")
             if is_stitched_or_zipapp and hasattr(m, func_name):
-                existing_func = getattr(m, func_name, None)
                 mp.setattr(m, func_name, replacement_func)
 
-                # Also patch __globals__ for direct function calls
-                if func_existed:
-                    existing_func_to_match = existing_func if existing_func else func
-                    if existing_func_to_match is not None:
-                        _apathetic_testing_priv_patch_globals_for_direct_calls(
-                            mp=mp,
-                            mod=m,
-                            func_name=func_name,
-                            original_func=existing_func_to_match,
-                            replacement_func=replacement_func,
-                            safeTrace=safeTrace,
-                            caller_func_name=caller_func_name,
-                        )
+                # NOTE: Do NOT patch __globals__ for stitched modules.
+                # Stitched modules have all their functions defined in one file,
+                # so they share a single __globals__ dict. Patching __globals__
+                # would corrupt the shared namespace and break test isolation.
+                # The module-level setattr above is sufficient for stitched builds
+                # because all direct calls (func()) and qualified calls (mod.func())
+                # resolve through the same namespace.
                 did_patch = True
 
             if did_patch and id(m) not in patched_ids:

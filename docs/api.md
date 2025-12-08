@@ -22,7 +22,7 @@ Complete API documentation for Apathetic Python Utils.
 | **Text Processing** | [`plural()`](#plural), [`remove_path_in_error_message()`](#remove_path_in_error_message) |
 | **Type Utilities** | [`safe_isinstance()`](#safe_isinstance), [`literal_to_set()`](#literal_to_set), [`cast_hint()`](#cast_hint), [`schema_from_typeddict()`](#schema_from_typeddict) |
 | **Version Utilities** | [`create_version_info()`](#create_version_info) |
-| **Testing Utilities** | [`create_mock_superclass_test()`](#create_mock_superclass_test), [`patch_everywhere()`](#patch_everywhere) |
+| **Testing Utilities** | [`detect_module_runtime_mode()`](#detect_module_runtime_mode), [`create_mock_superclass_test()`](#create_mock_superclass_test), [`patch_everywhere()`](#patch_everywhere) |
 | **Constants** | [`CI_ENV_VARS`](#ci_env_vars) |
 
 ## File Loading
@@ -1176,6 +1176,54 @@ assert version >= (3, 10)
 ```
 
 ## Testing Utilities
+
+### detect_module_runtime_mode
+
+```python
+detect_module_runtime_mode(
+    mod: ModuleType,
+    *,
+    stitch_hints: set[str] | None = None
+) -> str
+```
+
+Detect the runtime mode of a specific module.
+
+Determines whether a module was built as part of a stitched single-file script, zipapp archive, or standard package by checking for markers and file path attributes.
+
+This check prioritizes marker-based detection (`__STITCHED__` and `__STANDALONE__` attributes) as the most reliable method, but falls back to path heuristics when markers are not present.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `mod` | `ModuleType` | Module to check |
+| `stitch_hints` | `set[str] \| None` | Set of path hints to identify stitched modules. Defaults to `{"/dist/", "stitched"}`. Used as fallback when markers are not present. |
+
+**Returns:**
+- `str`: One of:
+  - `"stitched"` if module has `__STITCHED__` or `__STANDALONE__` marker, or if `__file__` path matches stitch_hints
+  - `"zipapp"` if module `__file__` indicates zipapp (contains `.pyz`)
+  - `"package"` for regular package modules
+
+**Raises:**
+- `TypeError`: If mod is not a ModuleType
+
+**Example:**
+```python
+from apathetic_utils import detect_module_runtime_mode
+import apathetic_utils
+
+# Detect module runtime mode
+mode = detect_module_runtime_mode(apathetic_utils)
+print(f"apathetic_utils is running in {mode} mode")
+
+# With custom stitch hints
+mode = detect_module_runtime_mode(
+    apathetic_utils,
+    stitch_hints={"/dist/", "bundled", "embedded"}
+)
+```
 
 ### create_mock_superclass_test
 
