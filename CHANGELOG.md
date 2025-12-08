@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.5.1 (2025-12-08)
+
+### Bug Fixes
+
+- **testing**: Re-enable globals patching for stitched modules
+  ([`ef8226b`](https://github.com/apathetic-tools/python-utils/commit/ef8226b4714b6cff3d90a429a79467ab2529ea8f))
+
+
 ## v0.5.0 (2025-12-08)
 
 ### Features
