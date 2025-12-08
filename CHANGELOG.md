@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.5.2 (2025-12-08)
+
+### Bug Fixes
+
+- **tests**: Handle __STITCHED__ in package module for runtime mode detection
+  ([`d8efa97`](https://github.com/apathetic-tools/python-utils/commit/d8efa97a7e81a0f31507a8afd25d0069897c1016))
+
+
 ## v0.5.1 (2025-12-08)
 
 ### Bug Fixes
