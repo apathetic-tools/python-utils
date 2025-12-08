@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.5.0 (2025-12-08)
+
+### Features
+
+- **testing**: Add detect_module_runtime_mode to detect stitched/zipapp builds
+  ([`313b747`](https://github.com/apathetic-tools/python-utils/commit/313b747852556527ad9007616640711671c493ba))
+
+
 ## v0.4.1 (2025-12-07)
 
 ### Bug Fixes
