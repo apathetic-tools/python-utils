@@ -54,7 +54,7 @@ typecheck = ["typecheck:mypy", "typecheck:pyright"]
 # 🧪 Tests (runs all three: package + stitched + zipapp)
 test = [
   "test:pytest:package",
-#  "test:pytest:stitched",
+  "test:pytest:stitched",
 #  "test:pytest:zipapp"
 ]
 "test:pytest:package" = "pytest"
@@ -91,13 +91,13 @@ test = [
 ]
 "test:fast:all" = [
   "test:fast:package",
-#  "test:fast:stitched",
+  "test:fast:stitched",
 #  "test:fast:zipapp"
 ]
 # Parallel: all three modes with parallel execution
 "test:parallel" = [
   "test:pytest:package:parallel",
-#  "test:pytest:stitched:parallel",
+  "test:pytest:stitched:parallel",
 #  "test:pytest:zipapp:parallel"
 ]
 

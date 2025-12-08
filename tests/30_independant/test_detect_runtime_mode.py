@@ -106,6 +106,18 @@ def test_detect_runtime_mode_zipapp_missing_file_attribute() -> None:
     # Save and remove serger module if it exists (it might have __STITCHED__)
     saved_serger = sys.modules.pop("serger", None)
 
+    # Save and remove __STITCHED__/__STANDALONE__ from package module if it exists
+    pkg_mod = sys.modules.get(PROGRAM_PACKAGE)
+    saved_stitched = None
+    saved_standalone = None
+    if pkg_mod is not None:
+        saved_stitched = getattr(pkg_mod, "__STITCHED__", None)
+        saved_standalone = getattr(pkg_mod, "__STANDALONE__", None)
+        if hasattr(pkg_mod, "__STITCHED__"):
+            delattr(pkg_mod, "__STITCHED__")
+        if hasattr(pkg_mod, "__STANDALONE__"):
+            delattr(pkg_mod, "__STANDALONE__")
+
     try:
         with (
             patch.object(sys, "frozen", False, create=True),
@@ -116,9 +128,12 @@ def test_detect_runtime_mode_zipapp_missing_file_attribute() -> None:
             ) as patched_globals,
         ):
             patched_globals.pop("__STITCHED__", None)
+            patched_globals.pop("__STANDALONE__", None)
             # Ensure __main__ doesn't have __STITCHED__ either
             if hasattr(mock_main, "__STITCHED__"):
                 delattr(mock_main, "__STITCHED__")
+            if hasattr(mock_main, "__STANDALONE__"):
+                delattr(mock_main, "__STANDALONE__")
 
             # --- execute ---
             result = _runtime.detect_runtime_mode(PROGRAM_PACKAGE)
@@ -127,6 +142,12 @@ def test_detect_runtime_mode_zipapp_missing_file_attribute() -> None:
         # Should fall through to package since no indicators match
         assert result == "package"
     finally:
+        # Restore package module attributes if they were there
+        if pkg_mod is not None:
+            if saved_stitched is not None:
+                setattr(pkg_mod, "__STITCHED__", saved_stitched)  # noqa: B010
+            if saved_standalone is not None:
+                setattr(pkg_mod, "__STANDALONE__", saved_standalone)  # noqa: B010
         # Restore serger module if it was there
         if saved_serger is not None:
             sys.modules["serger"] = saved_serger
@@ -172,6 +193,18 @@ def test_detect_runtime_mode_package() -> None:
     # Save and remove serger module if it exists (it might have __STITCHED__)
     saved_serger = sys.modules.pop("serger", None)
 
+    # Save and remove __STITCHED__/__STANDALONE__ from package module if it exists
+    pkg_mod = sys.modules.get(PROGRAM_PACKAGE)
+    saved_stitched = None
+    saved_standalone = None
+    if pkg_mod is not None:
+        saved_stitched = getattr(pkg_mod, "__STITCHED__", None)
+        saved_standalone = getattr(pkg_mod, "__STANDALONE__", None)
+        if hasattr(pkg_mod, "__STITCHED__"):
+            delattr(pkg_mod, "__STITCHED__")
+        if hasattr(pkg_mod, "__STANDALONE__"):
+            delattr(pkg_mod, "__STANDALONE__")
+
     try:
         with (
             patch.object(sys, "frozen", False, create=True),
@@ -183,9 +216,12 @@ def test_detect_runtime_mode_package() -> None:
         ):
             # Remove __STITCHED__ if it exists
             patched_globals.pop("__STITCHED__", None)
+            patched_globals.pop("__STANDALONE__", None)
             # Ensure __main__ doesn't have __STITCHED__ either
             if hasattr(mock_main, "__STITCHED__"):
                 delattr(mock_main, "__STITCHED__")
+            if hasattr(mock_main, "__STANDALONE__"):
+                delattr(mock_main, "__STANDALONE__")
 
             # --- execute ---
             result = _runtime.detect_runtime_mode(PROGRAM_PACKAGE)
@@ -193,6 +229,12 @@ def test_detect_runtime_mode_package() -> None:
         # --- verify ---
         assert result == "package"
     finally:
+        # Restore package module attributes if they were there
+        if pkg_mod is not None:
+            if saved_stitched is not None:
+                setattr(pkg_mod, "__STITCHED__", saved_stitched)  # noqa: B010
+            if saved_standalone is not None:
+                setattr(pkg_mod, "__STANDALONE__", saved_standalone)  # noqa: B010
         # Restore serger module if it was there
         if saved_serger is not None:
             sys.modules["serger"] = saved_serger
@@ -206,6 +248,18 @@ def test_detect_runtime_mode_package_missing_main() -> None:
     # --- setup ---
     # Save and remove serger module if it exists (it might have __STITCHED__)
     saved_serger = sys.modules.pop("serger", None)
+
+    # Save and remove __STITCHED__/__STANDALONE__ from package module if it exists
+    pkg_mod = sys.modules.get(PROGRAM_PACKAGE)
+    saved_stitched = None
+    saved_standalone = None
+    if pkg_mod is not None:
+        saved_stitched = getattr(pkg_mod, "__STITCHED__", None)
+        saved_standalone = getattr(pkg_mod, "__STANDALONE__", None)
+        if hasattr(pkg_mod, "__STITCHED__"):
+            delattr(pkg_mod, "__STITCHED__")
+        if hasattr(pkg_mod, "__STANDALONE__"):
+            delattr(pkg_mod, "__STANDALONE__")
 
     try:
         with (
@@ -221,6 +275,7 @@ def test_detect_runtime_mode_package_missing_main() -> None:
                     clear=False,
                 ) as patched_globals:
                     patched_globals.pop("__STITCHED__", None)
+                    patched_globals.pop("__STANDALONE__", None)
 
                     # --- execute ---
                     result = _runtime.detect_runtime_mode(PROGRAM_PACKAGE)
@@ -232,6 +287,12 @@ def test_detect_runtime_mode_package_missing_main() -> None:
         # --- verify ---
         assert result == "package"
     finally:
+        # Restore package module attributes if they were there
+        if pkg_mod is not None:
+            if saved_stitched is not None:
+                setattr(pkg_mod, "__STITCHED__", saved_stitched)  # noqa: B010
+            if saved_standalone is not None:
+                setattr(pkg_mod, "__STANDALONE__", saved_standalone)  # noqa: B010
         # Restore serger module if it was there
         if saved_serger is not None:
             sys.modules["serger"] = saved_serger
