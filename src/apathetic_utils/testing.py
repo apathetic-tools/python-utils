@@ -314,15 +314,19 @@ class ApatheticUtils_Internal_Testing:  # noqa: N801  # pyright: ignore[reportUn
                 safeTrace(f"Created and patched {mod_name}.{func_name}")
 
         # Patch direct function calls via __globals__
-        # Module-level functions share the same __globals__ dict (the module's
-        # __dict__). We need to patch functions' __globals__ to intercept direct
-        # calls (e.g., func() vs mod.func()). This works in both stitched and
-        # non-stitched modes.
-
-        # However, for stitched modules, all functions share a single __globals__
-        # dict because they're all defined in one file. Patching __globals__ for
-        # stitched modules corrupts the shared namespace across multiple test runs.
-        # Module-level setattr is sufficient for stitched builds.
+        # In package mode, module-level functions reference their module's __dict__
+        # as __globals__. We patch __globals__ to intercept direct calls (e.g.,
+        # func()) which resolve through __globals__, not module attributes.
+        #
+        # In stitched mode (e.g., serger's stub architecture), the situation is more
+        # complex: stub modules have a separate __dict__ from the stitched file's
+        # __globals__. When serger creates stub modules via types.ModuleType, it
+        # copies values from stitched __globals__ to the stub's __dict__. Functions
+        # defined in the stitched file use the stitched file's __globals__ for
+        # direct calls, NOT the stub's __dict__. Therefore, patching BOTH the stub
+        # module (via setattr) AND __globals__ is necessary to intercept all call
+        # patterns. MonkeyPatch's undo stack properly restores patched values,
+        # ensuring test isolation is preserved even with shared __globals__.
         is_stitched_or_zipapp = False
         if isinstance(mod_env, ModuleType):
             # Check if module is stitched or zipapp
@@ -332,12 +336,7 @@ class ApatheticUtils_Internal_Testing:  # noqa: N801  # pyright: ignore[reportUn
             )
             is_stitched_or_zipapp = mode in ("stitched", "zipapp")
 
-        if (
-            func_existed
-            and isinstance(mod_env, ModuleType)
-            and func is not None
-            and not is_stitched_or_zipapp
-        ):
+        if func_existed and isinstance(mod_env, ModuleType) and func is not None:
             _apathetic_testing_priv_patch_globals_for_direct_calls(
                 mp=mp,
                 mod=mod_env,
@@ -388,13 +387,25 @@ class ApatheticUtils_Internal_Testing:  # noqa: N801  # pyright: ignore[reportUn
             if is_stitched_or_zipapp and hasattr(m, func_name):
                 mp.setattr(m, func_name, replacement_func)
 
-                # NOTE: Do NOT patch __globals__ for stitched modules.
-                # Stitched modules have all their functions defined in one file,
-                # so they share a single __globals__ dict. Patching __globals__
-                # would corrupt the shared namespace and break test isolation.
-                # The module-level setattr above is sufficient for stitched builds
-                # because all direct calls (func()) and qualified calls (mod.func())
-                # resolve through the same namespace.
+                # CRITICAL: Also patch __globals__ for stitched modules.
+                # This handles the case where a stitched file (e.g., serger) creates
+                # stub modules and calls functions with direct calls (e.g., func()).
+                # The stub module's __dict__ is a separate dictionary from the
+                # stitched file's __globals__. Direct calls resolve through __globals__,
+                # not the stub's __dict__. Therefore, patching only via setattr is
+                # insufficient - we must also patch __globals__ to intercept direct
+                # calls within the stitched functions. MonkeyPatch's undo stack ensures
+                # proper restoration and test isolation even for shared __globals__.
+                if func_existed and func is not None:
+                    _apathetic_testing_priv_patch_globals_for_direct_calls(
+                        mp=mp,
+                        mod=m,
+                        func_name=func_name,
+                        original_func=func,
+                        replacement_func=replacement_func,
+                        safeTrace=safeTrace,
+                        caller_func_name=caller_func_name,
+                    )
                 did_patch = True
 
             if did_patch and id(m) not in patched_ids:
