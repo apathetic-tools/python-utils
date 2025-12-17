@@ -315,12 +315,6 @@ def test_runtime_swap_stitched_without_script_name(
     assert expected_script.exists()
 
 
-@pytest.mark.skip(
-    reason=(
-        "Skip until zipbundler is implemented. "
-        "Remove this marker once zipbundler implementation is complete."
-    ),
-)
 def test_runtime_swap_zipapp_without_script_name(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
