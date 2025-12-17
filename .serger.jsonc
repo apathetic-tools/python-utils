@@ -1,5 +1,5 @@
 // Serger's configuration
-// This file defines how to stitch apathetic_utils into a single-file python script
+// This file defines how to stitch the package into a single-file python script
 
 {
   // Stitching configuration for the main serger package
@@ -27,11 +27,4 @@
     "*.pyc",
     "**/__main__.py"     // Entry point, not stitched
   ],
-
-  // Output file path (relative to project root)
-  // This will be the final single-file executable
-  "out": "dist/apathetic_utils.py",
-
-  // Global configuration defaults
-  "log_level": "warning"
 }

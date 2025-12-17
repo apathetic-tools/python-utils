@@ -47,7 +47,7 @@ minima:
       url: "https://discord.gg/PW6GahZ7"
     - title: GitHub Repository
       icon: github
-      url: "https://github.com/apathetic-tools/python-utils"    
+      url: "https://github.com/apathetic-tools/python-utils"
     - title: PyPI
       icon: pypi
       url: "https://pypi.org/project/apathetic-utils/"
@@ -64,7 +64,7 @@ exclude:
   - vendor/ruby/
 
 # Site metadata
-author: 
+author:
   name: 😐 Apathetic Tools
   url: https://apathetic-tools.github.io/
 

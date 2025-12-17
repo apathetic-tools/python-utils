@@ -41,9 +41,10 @@ Changelog = "https://github.com/apathetic-tools/python-utils/releases"
 "check:fix" = ["pre-commit:install", "fix", "typecheck", "test:parallel"]
 
 # 🔍 Linting and static checks
-check = ["lint", "typecheck",  "test:parallel"]
+check = ["lint", "typecheck", "validate:classifiers", "test:parallel"]
 lint = ["lint:ruff"]
 "lint:ruff" = "ruff check ."
+"validate:classifiers" = "python dev/validate_classifiers.py"
 
 # 🧠 Type checking
 typecheck = ["typecheck:mypy", "typecheck:pyright"]
@@ -55,7 +56,7 @@ typecheck = ["typecheck:mypy", "typecheck:pyright"]
 test = [
   "test:pytest:package",
   "test:pytest:stitched",
-#  "test:pytest:zipapp"
+  "test:pytest:zipapp"
 ]
 "test:pytest:package" = "pytest"
 "test:pytest:package:parallel" = "pytest -n auto"
@@ -92,13 +93,13 @@ test = [
 "test:fast:all" = [
   "test:fast:package",
   "test:fast:stitched",
-#  "test:fast:zipapp"
+  "test:fast:zipapp"
 ]
 # Parallel: all three modes with parallel execution
 "test:parallel" = [
   "test:pytest:package:parallel",
   "test:pytest:stitched:parallel",
-#  "test:pytest:zipapp:parallel"
+  "test:pytest:zipapp:parallel"
 ]
 
 # 📊 Coverage reporting
@@ -136,9 +137,11 @@ fix = ["sync:ai:guidance", "fix:ruff:package", "fix:format:package"]
 "fix:format:dist" = { shell = "if [ -d dist ]; then ruff format dist -q; fi" }
 
 # 🧩 Build and license
-"sync:ai:guidance" = "python -m sync_ai_guidance --quiet"
-"build:stitched" = "python -m serger"
-"build:zipapp" = "python -m zipbundler -m apathetic_utils -o dist/apathetic_utils.pyz . -q"
+#"sync:ai:guidance" = "python -m sync_ai_guidance --quiet"
+"sync:ai:guidance" = "echo 'currently disabled'"
+# this creates the stitched script from the module, it need to use serger not zipbundler to do that
+"build:stitched" = "python -m serger --quiet"
+"build:zipapp" = "python -m zipbundler -m apathetic_utils.__main__:main -c -o dist/apathetic_utils.pyz src --quiet"
 
 # 🚀 Release management (semantic-release)
 "release:version" = "semantic-release version --noop"
@@ -148,10 +151,15 @@ fix = ["sync:ai:guidance", "fix:ruff:package", "fix:format:package"]
 # 🔧 Setup and installation
 "pre-commit:install" = "bash dev/install_pre_commit_hooks.sh"
 
+# 📤 Git operations
+"git:push:rebase" = { shell = "git pull --rebase && git push" }
+
 # 🐍 Python version management
 "env:py310" = "bash dev/env_use_py310.sh"
 "env:py311" = "bash dev/env_use_py311.sh"
 "env:py312" = "bash dev/env_use_py312.sh"
+"env:py313" = "bash dev/env_use_py313.sh"
+"env:py314" = "bash dev/env_use_py314.sh"
 "env:py3x" = "bash dev/env_use_py3x.sh"
 "test:py310" = [
   "env:py310",
@@ -165,6 +173,16 @@ fix = ["sync:ai:guidance", "fix:ruff:package", "fix:format:package"]
 ]
 "test:py312" = [
   "env:py312",
+  "test:parallel",
+  "env:py3x"
+]
+"test:py313" = [
+  "env:py313",
+  "test:parallel",
+  "env:py3x"
+]
+"test:py314" = [
+  "env:py314",
   "test:parallel",
   "env:py3x"
 ]
@@ -192,19 +210,20 @@ dev = [
     "ruff (>=0.14.0,<0.15.0)",
     "mypy (>=1.18.2,<2.0.0)",
     "pytest (>=9.0.0,<10.0.0)",
-    "poethepoet (>=0.37.0,<0.39.0)",
+    "poethepoet (>=0.37.0,<1.0.0)",
     "pre-commit (>=4.3.0,<5.0.0)",
     "colorama (>=0.4.6,<0.5.0)",
     "pytest-dependency (>=0.6.0,<0.7.0)",
     "pytest-timeout (>=2.4.0,<3.0.0)",
     "pytest-benchmark (>=5.1.0,<6.0.0)",
     "pytest-cov (>=7.0.0,<8.0.0)",
-    "pytest-xdist",
+    "pytest-xdist (>=3.8.0,<4.0.0)",
     "pyright (>=1.1.407,<2.0.0)",
     "python-semantic-release (>=10.0.0,<11.0.0)",
+    "trove-classifiers (>=2025.11.14.15,<2026.0.0.0)",
     "serger (>=0.1.0,<2.0.0)",
-    "sheave (>=0.2.0,<2.0.0)",
     "zipbundler (>=0.1.0,<2.0.0)",
+    "sheave (>=0.3.0,<2.0.0)",
 ]
 
 # --- Ruff: formatter and linter ---
@@ -213,7 +232,6 @@ dev = [
 line-length = 88
 fix = true
 respect-gitignore = true
-exclude = ["bin"]
 
 [tool.ruff.lint]
 allowed-confusables = [
@@ -325,22 +343,17 @@ atomic = true                    # Fail instead of partial reordering if conflic
 [tool.mypy]
 python_version = "3.10"
 strict = true
-exclude = ["bin"]
-
-
-
 
 # --- Pyright: static type checker (powers Pylance) ---
 [tool.pyright]
 pythonVersion = "3.10"
 typeCheckingMode = "strict"
-exclude = ["bin"]
 
 # --- Coverage: code coverage tracking ---
 [tool.coverage.run]
 source = ["src"]
 omit = ["*/tests/*", "*/test_*.py"]
-# Enable subprocess coverage tracking (for python -m apathetic_utils calls)
+# Enable subprocess coverage tracking (for python -m <package> calls)
 concurrency = ["thread", "multiprocessing"]
 sigterm = true
 

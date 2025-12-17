@@ -14,7 +14,7 @@ for POSSIBLE_PATH in /usr/bin/python3.12 /usr/local/bin/python3.12; do
 done
 # If not in system locations, check PATH but exclude mise-managed paths
 if [ -z "$PY312_PATH" ]; then
-  CMD_PATH=$(command -v python3.12 2>/dev/null)
+  CMD_PATH=$(command -v python3.12 2>/dev/null || true)
   if [ -n "$CMD_PATH" ] && ! echo "$CMD_PATH" | grep -qE "(mise|\.mise)"; then
     if "$CMD_PATH" --version 2>&1 | grep -q "3.12"; then
       PY312_PATH="$CMD_PATH"
@@ -31,13 +31,13 @@ elif command -v mise >/dev/null 2>&1; then
   if [ -n "$MISE_PYTHON" ] && [ -x "$MISE_PYTHON" ]; then
     poetry env use "$MISE_PYTHON" && poetry install
   else
-    echo "❌ Python 3.12 not found via mise."
-    echo "   Install with: mise install python@3.12"
-    echo "   Or run: poetry run poe setup:python:check"
+    echo "❌ Python 3.12 not found via mise." >&2
+    echo "   Install with: mise install python@3.12" >&2
+    echo "   Or run: poetry run poe setup:python:check" >&2
     exit 1
   fi
 else
-  echo "❌ Python 3.12 not found. Run: poetry run poe setup:python:check"
+  echo "❌ Python 3.12 not found. Run: poetry run poe setup:python:check" >&2
   exit 1
 fi
 

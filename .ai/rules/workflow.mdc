@@ -24,4 +24,4 @@ When creating a **new** plan document:
 
 ### When to Read Workflow/Template Files
 
-Only read `.ai/workflows/` or `.ai/templates/` when: condition is met (e.g., stuck debugging → read `debug_tests.md`), or directly asked to work on them. Mentions in rules are references, not immediate read instructions.
+Only read `.ai/workflows/` or `.ai/templates/` when: condition is met (e.g., stuck debugging ? read `debug_tests.md`), or directly asked to work on them. Mentions in rules are references, not immediate read instructions.

@@ -6,7 +6,7 @@ alwaysApply: true
 ---
 
 ### Important Files
-- `dist/apathetic_utils.py` is **generated** - never edit. Generate via `poetry run poe build:script`
+- `dist/apathetic_logging.py` is **generated** - never edit. Generate via `poetry run poe build:script`
 - `dist/` contains build outputs - do not edit
 
 ### Project Structure

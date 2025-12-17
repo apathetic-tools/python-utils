@@ -42,8 +42,8 @@ error_message = (
 
 ### Checks and Tests
 
-**Requirement**: `poetry run poe check:fix` must pass completely before finishing work. Runs: formatting, linting, type checking, tests (both installed and singlefile runtimes). **CI blocks pushes until this passes.**
+**Requirement**: `poetry run poe check:fix` must pass completely before finishing work. Runs: formatting, linting, type checking, tests (both installed and stitched runtimes). **CI blocks pushes until this passes.**
 
 **Commands**: `poetry run poe check:fix` (main), `check`, `fix`, `lint`, `typecheck`, `test`. Individual: `lint:ruff`, `fix:ruff:installed`, `fix:format:installed`, `typecheck:mypy`, `typecheck:pyright`, `test:pytest:installed`, `test:pytest:script`.
 
-**Single files**: `ruff format/check/check --fix <file>`, `pytest <file>::<test>` (add `RUNTIME_MODE=singlefile` for singlefile mode).
+**Single files**: `ruff format/check/check --fix <file>`, `pytest <file>::<test>` (add `RUNTIME_MODE=stitched` for stitched mode).

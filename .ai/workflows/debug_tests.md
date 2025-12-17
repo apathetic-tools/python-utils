@@ -18,7 +18,7 @@ The `test` log level is the most verbose and bypasses pytest's log capture, allo
 
 **Usage:**
 ```bash
-LOG_LEVEL=test poetry run poe test:pytest:installed tests/path/to/test.py::test_name -xvs
+LOG_LEVEL=test poetry run poe test:pytest:package tests/path/to/test.py::test_name -xvs
 ```
 
 **What it does:**
@@ -60,15 +60,15 @@ logger.trace("Exiting function with result=%r", result)
 - Trace loop iterations for small loops
 - Use descriptive messages that explain context
 
-### 3. Use safeTrace() for Unavailable Logging
+### 3. Use safe_trace() for Unavailable Logging
 
-When logging is not available or captured even with `LOG_LEVEL=test`, use `apathetic_utils.safeTrace()`. This writes directly to `sys.__stderr__` and bypasses all logging frameworks and capture systems.
+When logging is not available or captured even with `LOG_LEVEL=test`, use `apathetic_logging.safe_trace()`. This writes directly to `sys.__stderr__` and bypasses all logging frameworks and capture systems.
 
 **Usage:**
 ```python
-from apathetic_utils import safeTrace
+from apathetic_logging import safe_trace
 
-safeTrace("label", value1, value2, icon="🔍")
+safe_trace("label", value1, value2, icon="🔍")
 ```
 
 **What it does:**
@@ -89,21 +89,21 @@ safeTrace("label", value1, value2, icon="🔍")
 - When logging handlers aren't configured correctly
 - Emergency debugging when nothing else works
 
-### 4. Create Custom Trace Functions with makeSafeTrace()
+### 4. Create Custom Trace Functions with make_safe_trace()
 
-Use `apathetic_utils.makeSafeTrace(icon)` to create custom trace functions with specific icons for easier visual scanning.
+Use `apathetic_logging.make_safe_trace(icon)` to create custom trace functions with specific icons for easier visual scanning.
 
 **Usage:**
 ```python
-from apathetic_utils import makeSafeTrace
+from apathetic_logging import make_safe_trace
 
-trace = makeSafeTrace("🔍")
+trace = make_safe_trace("🔍")
 trace("Entering function", param1, param2)
 
-trace_data = makeSafeTrace("📊")
+trace_data = make_safe_trace("📊")
 trace_data("Data state", data_dict)
 
-trace_error = makeSafeTrace("❌")
+trace_error = make_safe_trace("❌")
 trace_error("Error occurred", error_details)
 ```
 
@@ -126,28 +126,28 @@ trace_error("Error occurred", error_details)
 - 🔄 - Loop iterations
 - 🎯 - Key decision points
 
-### 5. Enable safeTrace() Output with safeTrace Environment Variable
+### 5. Enable safe_trace() Output with SAFE_TRACE Environment Variable
 
-Enable `safeTrace()` output by setting the `safeTrace` environment variable. This is required because `safeTrace()` is disabled by default.
+Enable `safe_trace()` output by setting the `SAFE_TRACE` environment variable. This is required because `safe_trace()` is disabled by default.
 
 **Usage:**
 ```bash
-safeTrace=1 poetry run poe test:pytest:installed tests/path/to/test.py::test_name -xvs
+SAFE_TRACE=1 poetry run poe test:pytest:package tests/path/to/test.py::test_name -xvs
 ```
 
 **Combined with LOG_LEVEL=test:**
 ```bash
-LOG_LEVEL=test safeTrace=1 poetry run poe test:pytest:installed tests/path/to/test.py::test_name -xvs
+LOG_LEVEL=test SAFE_TRACE=1 poetry run poe test:pytest:package tests/path/to/test.py::test_name -xvs
 ```
 
 **What it does:**
-- Enables `safeTrace()` output (it's disabled by default)
+- Enables `safe_trace()` output (it's disabled by default)
 - Works in combination with `LOG_LEVEL=test` for maximum visibility
-- Provides both logging and safeTrace output
+- Provides both logging and safe_trace output
 
 **When to use:**
-- When you've added `safeTrace()` calls but don't see output
-- When you need both logging and safeTrace visibility
+- When you've added `safe_trace()` calls but don't see output
+- When you need both logging and safe_trace visibility
 - When you want maximum debugging output
 
 ## Workflow: Systematic Debugging Approach
@@ -158,7 +158,7 @@ LOG_LEVEL=test safeTrace=1 poetry run poe test:pytest:installed tests/path/to/te
 
 2. **If standard debugging isn't enough, try LOG_LEVEL=test**
    ```bash
-   LOG_LEVEL=test poetry run poe test:pytest:installed tests/path/to/test.py::test_name -xvs
+   LOG_LEVEL=test poetry run poe test:pytest:package tests/path/to/test.py::test_name -xvs
    ```
    - This often reveals hidden logging output
 
@@ -167,14 +167,14 @@ LOG_LEVEL=test safeTrace=1 poetry run poe test:pytest:installed tests/path/to/te
    - Trace variable values and execution flow
    - Re-run tests with `LOG_LEVEL=test`
 
-4. **If logging is still not visible, use safeTrace()**
-   - Add `safeTrace()` calls at critical points
-   - Enable with `safeTrace=1`
+4. **If logging is still not visible, use safe_trace()**
+   - Add `safe_trace()` calls at critical points
+   - Enable with `SAFE_TRACE=1`
    - Use custom icons for different trace types
 
 5. **Combine techniques for maximum visibility**
    ```bash
-   LOG_LEVEL=test safeTrace=1 poetry run poe test:pytest:installed tests/path/to/test.py::test_name -xvs
+   LOG_LEVEL=test SAFE_TRACE=1 poetry run poe test:pytest:package tests/path/to/test.py::test_name -xvs
    ```
 
 ## Common Scenarios
@@ -185,20 +185,20 @@ LOG_LEVEL=test safeTrace=1 poetry run poe test:pytest:installed tests/path/to/te
 
 ### Scenario: Logging output is being captured by pytest
 - **Solution**: Use `LOG_LEVEL=test` to bypass capture
-- **If still captured**: Use `safeTrace()` with `safeTrace=1`
+- **If still captured**: Use `safe_trace()` with `SAFE_TRACE=1`
 
 ### Scenario: Need to debug code before logging is initialized
-- **Solution**: Use `safeTrace()` - it works before logging is set up
-- **Enable**: Set `safeTrace=1` environment variable
+- **Solution**: Use `safe_trace()` - it works before logging is set up
+- **Enable**: Set `SAFE_TRACE=1` environment variable
 
 ### Scenario: Complex execution flow is hard to follow
 - **Solution**: Add `logger.trace()` at key decision points
-- **Enhance**: Use `makeSafeTrace()` with different icons for different trace types
+- **Enhance**: Use `make_safe_trace()` with different icons for different trace types
 - **Run**: With `LOG_LEVEL=test` to see all traces
 
 ### Scenario: Variable values are unexpected
 - **Solution**: Add `logger.trace()` to log variable values
-- **Use**: `safeTrace()` if logging isn't visible
+- **Use**: `safe_trace()` if logging isn't visible
 - **Pattern**: Trace before and after operations that modify variables
 
 ## Tips
