@@ -161,7 +161,7 @@ testpkg = "testpkg.module:main"
                 )
 
 
-def test_zipapp_build_produces_valid_file() -> None:
+def test_zipapp_build_produces_valid_file(tmp_path: Path) -> None:
     """Test that zipbundler creates a valid zipapp file for the project.
 
     This test:
@@ -171,10 +171,9 @@ def test_zipapp_build_produces_valid_file() -> None:
     This verifies our project configuration works correctly with zipbundler.
     """
     # --- setup ---
-    zipapp_file = PROJ_ROOT / "dist" / "apathetic_utils.pyz"
-
-    # Ensure dist directory exists
-    zipapp_file.parent.mkdir(parents=True, exist_ok=True)
+    # Use pytest's tmp_path to avoid race conditions in parallel test execution
+    test_id = id(test_zipapp_build_produces_valid_file)
+    zipapp_file = tmp_path / f"apathetic_utils_{test_id}.pyz"
 
     # --- execute: build zipapp ---
     zipbundler_cmd = apathetic_utils.find_python_command(
@@ -187,12 +186,10 @@ def test_zipapp_build_produces_valid_file() -> None:
     result = subprocess.run(  # noqa: S603
         [
             *zipbundler_cmd,
-            "-m",
-            "apathetic_utils",
             "-o",
             str(zipapp_file),
             "-q",
-            ".",
+            "src",
         ],
         cwd=PROJ_ROOT,
         capture_output=True,
@@ -225,7 +222,7 @@ def test_zipapp_build_produces_valid_file() -> None:
     )
 
 
-def test_zipapp_build_is_deterministic() -> None:
+def test_zipapp_build_is_deterministic(tmp_path: Path) -> None:
     """Test that two zipapp builds of the project produce identical output.
 
     This test:
@@ -238,10 +235,9 @@ def test_zipapp_build_is_deterministic() -> None:
     that file.
     """
     # --- setup ---
-    zipapp_file = PROJ_ROOT / "dist" / "apathetic_utils.pyz"
-
-    # Ensure dist directory exists
-    zipapp_file.parent.mkdir(parents=True, exist_ok=True)
+    # Use pytest's tmp_path to avoid race conditions in parallel test execution
+    test_id = id(test_zipapp_build_is_deterministic)
+    zipapp_file = tmp_path / f"apathetic_utils_{test_id}.pyz"
 
     # --- execute: first build ---
     zipbundler_cmd = apathetic_utils.find_python_command(
@@ -254,12 +250,10 @@ def test_zipapp_build_is_deterministic() -> None:
     result1 = subprocess.run(  # noqa: S603
         [
             *zipbundler_cmd,
-            "-m",
-            "apathetic_utils",
             "-o",
             str(zipapp_file),
             "-q",
-            ".",
+            "src",
         ],
         cwd=PROJ_ROOT,
         capture_output=True,
@@ -285,12 +279,10 @@ def test_zipapp_build_is_deterministic() -> None:
         result2 = subprocess.run(  # noqa: S603
             [
                 *zipbundler_cmd,
-                "-m",
-                "apathetic_utils",
                 "-o",
                 str(zipapp_file),
                 "-q",
-                ".",
+                "src",
             ],
             cwd=PROJ_ROOT,
             capture_output=True,

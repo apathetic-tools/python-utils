@@ -13,6 +13,7 @@ when built with zipbundler (not testing zipbundler itself).
 import subprocess
 import sys
 import zipfile
+from pathlib import Path
 
 import pytest
 
@@ -24,7 +25,7 @@ from tests.utils.constants import PROJ_ROOT
 __runtime_mode__ = "zipapp"
 
 
-def test_zipapp_import_semantics() -> None:
+def test_zipapp_import_semantics(tmp_path: Path) -> None:
     """Test that zipapp builds maintain correct import semantics.
 
     This test verifies our project code works correctly when built with zipbundler:
@@ -36,11 +37,9 @@ def test_zipapp_import_semantics() -> None:
     This verifies our project configuration and code work correctly with zipbundler.
     """
     # --- setup ---
-    # Build the project's zipapp
-    zipapp_file = PROJ_ROOT / "dist" / "apathetic_utils.pyz"
-
-    # Ensure dist directory exists
-    zipapp_file.parent.mkdir(parents=True, exist_ok=True)
+    # Use pytest's tmp_path to avoid race conditions in parallel test execution
+    test_id = id(test_zipapp_import_semantics)
+    zipapp_file = tmp_path / f"apathetic_utils_{test_id}.pyz"
 
     # --- execute: build zipapp ---
     zipbundler_cmd = apathetic_utils.find_python_command(
@@ -53,12 +52,10 @@ def test_zipapp_import_semantics() -> None:
     result = subprocess.run(  # noqa: S603
         [
             *zipbundler_cmd,
-            "-m",
-            "apathetic_utils",
             "-o",
             str(zipapp_file),
             "-q",
-            ".",
+            "src",
         ],
         cwd=PROJ_ROOT,
         capture_output=True,

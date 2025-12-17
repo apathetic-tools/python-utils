@@ -17,13 +17,14 @@ import importlib.util
 import subprocess
 import sys
 import types
+from pathlib import Path
 
 import pytest
 
 from tests.utils.constants import PROJ_ROOT
 
 
-def test_serger_build_import_semantics() -> None:
+def test_serger_build_import_semantics(tmp_path: Path) -> None:
     """Test that serger build of the project maintains correct import semantics.
 
     This test verifies our project code works correctly when built with serger:
@@ -36,11 +37,10 @@ def test_serger_build_import_semantics() -> None:
     """
     # --- setup ---
     # Build the project's single-file script
+    # Use pytest's tmp_path to avoid race conditions in parallel test execution
     config_file = PROJ_ROOT / ".serger.jsonc"
-    output_file = PROJ_ROOT / "dist" / "apathetic_utils.py"
-
-    # Ensure dist directory exists
-    output_file.parent.mkdir(parents=True, exist_ok=True)
+    test_id = id(test_serger_build_import_semantics)
+    output_file = tmp_path / f"apathetic_utils_{test_id}.py"
 
     # --- execute: build the project ---
     result = subprocess.run(  # noqa: S603
@@ -50,6 +50,8 @@ def test_serger_build_import_semantics() -> None:
             "serger",
             "--config",
             str(config_file),
+            "--out",
+            str(output_file),
         ],
         cwd=PROJ_ROOT,
         capture_output=True,
