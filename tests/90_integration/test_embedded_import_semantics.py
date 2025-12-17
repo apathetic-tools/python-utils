@@ -23,12 +23,6 @@ import pytest
 from tests.utils.constants import PROJ_ROOT
 
 
-@pytest.mark.skip(
-    reason=(
-        "Skip until latest serger release is available. "
-        "Remove this marker once the latest serger release is available."
-    ),
-)
 def test_serger_build_import_semantics() -> None:
     """Test that serger build of the project maintains correct import semantics.
 

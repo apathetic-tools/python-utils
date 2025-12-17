@@ -24,12 +24,6 @@ _runtime = amod_utils_runtime.ApatheticUtils_Internal_Runtime
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skip(
-    reason=(
-        "Skip until latest serger release is available. "
-        "Remove this marker once the latest serger release is available."
-    ),
-)
 def test_ensure_stitched_script_up_to_date_with_script_name(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -65,12 +59,6 @@ def test_ensure_stitched_script_up_to_date_with_script_name(
     assert script_path.exists()
 
 
-@pytest.mark.skip(
-    reason=(
-        "Skip until latest serger release is available. "
-        "Remove this marker once the latest serger release is available."
-    ),
-)
 def test_ensure_stitched_script_up_to_date_without_script_name(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -290,12 +278,6 @@ def test_runtime_swap_without_script_name() -> None:
     assert result is False  # Package mode returns False
 
 
-@pytest.mark.skip(
-    reason=(
-        "Skip until latest serger release is available. "
-        "Remove this marker once the latest serger release is available."
-    ),
-)
 def test_runtime_swap_stitched_without_script_name(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -25,12 +25,6 @@ from tests.utils.constants import PROJ_ROOT
 # ============================================================================
 
 
-@pytest.mark.skip(
-    reason=(
-        "Skip until latest serger release is available. "
-        "Remove this marker once the latest serger release is available."
-    ),
-)
 def test_serger_build_with_sample_code_is_deterministic(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -123,12 +117,6 @@ def test_serger_build_with_sample_code_is_deterministic(
 # ============================================================================
 
 
-@pytest.mark.skip(
-    reason=(
-        "Skip until latest serger release is available. "
-        "Remove this marker once the latest serger release is available."
-    ),
-)
 def test_serger_build_is_deterministic() -> None:
     """Test that two serger builds of the project produce identical output.
 
