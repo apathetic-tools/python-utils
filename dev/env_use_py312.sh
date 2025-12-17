@@ -26,8 +26,14 @@ if [ -n "$PY312_PATH" ]; then
   poetry env use "$PY312_PATH" && poetry install
 # Fall back to mise
 elif command -v mise >/dev/null 2>&1; then
-  # Try to find Python 3.12 via mise
-  MISE_PYTHON=$(mise which python3.12 2>/dev/null || true)
+  # Try to find Python 3.12 via mise (check in standard mise install locations)
+  MISE_PYTHON=""
+  for MISE_BASE in "${HOME}/.local/share/mise" "${HOME}/.mise"; do
+    if [ -x "$MISE_BASE/installs/python/3.12/bin/python3.12" ]; then
+      MISE_PYTHON="$MISE_BASE/installs/python/3.12/bin/python3.12"
+      break
+    fi
+  done
   if [ -n "$MISE_PYTHON" ] && [ -x "$MISE_PYTHON" ]; then
     poetry env use "$MISE_PYTHON" && poetry install
   else

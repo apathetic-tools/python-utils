@@ -39,6 +39,7 @@ Changelog = "https://github.com/apathetic-tools/python-utils/releases"
 [tool.poe.tasks]
 # 🧩 All-in-one
 "check:fix" = ["pre-commit:install", "fix", "typecheck", "test:parallel"]
+"check:fix:notests" = ["pre-commit:install", "fix", "typecheck"]
 
 # 🔍 Linting and static checks
 check = ["lint", "typecheck", "validate:classifiers", "test:parallel"]
