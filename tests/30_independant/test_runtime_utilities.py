@@ -24,11 +24,20 @@ _runtime = amod_utils_runtime.ApatheticUtils_Internal_Runtime
 # ---------------------------------------------------------------------------
 
 
-def test_ensure_stitched_script_up_to_date_with_script_name(
+@pytest.mark.parametrize(
+    ("script_name", "expected_script_name"),
+    [
+        ("custom_script", "custom_script"),
+        (None, "testpkg"),  # Defaults to package_name
+    ],
+)
+def test_ensure_stitched_script_up_to_date_script_name(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    script_name: str | None,
+    expected_script_name: str,
 ) -> None:
-    """Test ensure_stitched_script_up_to_date with explicit script_name."""
+    """Test ensure_stitched_script_up_to_date with and without explicit script_name."""
     # --- setup ---
     pkg_dir = tmp_path / "src" / "testpkg"
     pkg_dir.mkdir(parents=True)
@@ -39,7 +48,7 @@ def test_ensure_stitched_script_up_to_date_with_script_name(
     config_data = {
         "package": "testpkg",
         "include": ["src/testpkg/**/*.py"],
-        "out": "dist/custom_script.py",
+        "out": f"dist/{expected_script_name}.py",
         "disable_build_timestamp": True,
     }
     config.write_text(json.dumps(config_data, indent=2))
@@ -47,50 +56,20 @@ def test_ensure_stitched_script_up_to_date_with_script_name(
     monkeypatch.chdir(tmp_path)
 
     # --- execute ---
-    script_path = _runtime.ensure_stitched_script_up_to_date(
-        root=tmp_path,
-        script_name="custom_script",
-        package_name="testpkg",
-    )
+    if script_name is not None:
+        script_path = _runtime.ensure_stitched_script_up_to_date(
+            root=tmp_path,
+            script_name=script_name,
+            package_name="testpkg",
+        )
+    else:
+        script_path = _runtime.ensure_stitched_script_up_to_date(
+            root=tmp_path,
+            package_name="testpkg",
+        )
 
     # --- verify ---
-    expected_path = tmp_path / "dist" / "custom_script.py"
-    assert script_path == expected_path
-    assert script_path.exists()
-
-
-def test_ensure_stitched_script_up_to_date_without_script_name(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Test ensure_stitched_script_up_to_date defaults script_name to package_name."""
-    # --- setup ---
-    pkg_dir = tmp_path / "src" / "testpkg"
-    pkg_dir.mkdir(parents=True)
-    (pkg_dir / "__init__.py").write_text('"""Test package."""\n')
-    (pkg_dir / "module.py").write_text('"""Test module."""\n\nvalue = 42\n')
-
-    config = tmp_path / ".serger.jsonc"
-    config_data = {
-        "package": "testpkg",
-        "include": ["src/testpkg/**/*.py"],
-        "out": "dist/testpkg.py",
-        "disable_build_timestamp": True,
-    }
-    config.write_text(json.dumps(config_data, indent=2))
-
-    monkeypatch.chdir(tmp_path)
-
-    # --- execute ---
-    script_path = _runtime.ensure_stitched_script_up_to_date(
-        root=tmp_path,
-        package_name="testpkg",
-        # script_name=None (default)
-    )
-
-    # --- verify ---
-    # Should default to package_name
-    expected_path = tmp_path / "dist" / "testpkg.py"
+    expected_path = tmp_path / "dist" / f"{expected_script_name}.py"
     assert script_path == expected_path
     assert script_path.exists()
 
@@ -160,11 +139,20 @@ out_path.write_text("# Mock bundled script\\n")
 # ---------------------------------------------------------------------------
 
 
-def test_ensure_zipapp_up_to_date_with_script_name(
+@pytest.mark.parametrize(
+    ("script_name", "expected_script_name"),
+    [
+        ("custom_zipapp", "custom_zipapp"),
+        (None, "testpkg"),  # Defaults to package_name
+    ],
+)
+def test_ensure_zipapp_up_to_date_script_name(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    script_name: str | None,
+    expected_script_name: str,
 ) -> None:
-    """Test ensure_zipapp_up_to_date with explicit script_name."""
+    """Test ensure_zipapp_up_to_date with and without explicit script_name."""
     # --- setup ---
     pkg_dir = tmp_path / "src" / "testpkg"
     pkg_dir.mkdir(parents=True)
@@ -190,57 +178,20 @@ testpkg = "testpkg:main"
     monkeypatch.chdir(tmp_path)
 
     # --- execute ---
-    zipapp_path = _runtime.ensure_zipapp_up_to_date(
-        root=tmp_path,
-        script_name="custom_zipapp",
-        package_name="testpkg",
-    )
+    if script_name is not None:
+        zipapp_path = _runtime.ensure_zipapp_up_to_date(
+            root=tmp_path,
+            script_name=script_name,
+            package_name="testpkg",
+        )
+    else:
+        zipapp_path = _runtime.ensure_zipapp_up_to_date(
+            root=tmp_path,
+            package_name="testpkg",
+        )
 
     # --- verify ---
-    expected_path = tmp_path / "dist" / "custom_zipapp.pyz"
-    assert zipapp_path == expected_path
-    assert zipapp_path.exists()
-
-
-def test_ensure_zipapp_up_to_date_without_script_name(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Test ensure_zipapp_up_to_date defaults script_name to package_name."""
-    # --- setup ---
-    pkg_dir = tmp_path / "src" / "testpkg"
-    pkg_dir.mkdir(parents=True)
-    (pkg_dir / "__init__.py").write_text('"""Test package."""\n')
-    (pkg_dir / "module.py").write_text('"""Test module."""\n\nvalue = 42\n')
-
-    # Create a minimal pyproject.toml for zipbundler with entry point
-    pyproject = tmp_path / "pyproject.toml"
-    pyproject.write_text(
-        """[project]
-name = "testpkg"
-version = "0.1.0"
-
-[project.scripts]
-testpkg = "testpkg:main"
-"""
-    )
-    # Add a main function
-    (pkg_dir / "__main__.py").write_text("def main(): pass\n")
-    # Ensure dist directory exists
-    (tmp_path / "dist").mkdir(exist_ok=True)
-
-    monkeypatch.chdir(tmp_path)
-
-    # --- execute ---
-    zipapp_path = _runtime.ensure_zipapp_up_to_date(
-        root=tmp_path,
-        package_name="testpkg",
-        # script_name=None (default)
-    )
-
-    # --- verify ---
-    # Should default to package_name
-    expected_path = tmp_path / "dist" / "testpkg.pyz"
+    expected_path = tmp_path / "dist" / f"{expected_script_name}.pyz"
     assert zipapp_path == expected_path
     assert zipapp_path.exists()
 
@@ -250,29 +201,23 @@ testpkg = "testpkg:main"
 # ---------------------------------------------------------------------------
 
 
-def test_runtime_swap_with_script_name() -> None:
-    """Test runtime_swap with explicit script_name."""
+@pytest.mark.parametrize("script_name", ["custom_script", None])
+def test_runtime_swap_script_name(script_name: str | None) -> None:
+    """Test runtime_swap with and without explicit script_name."""
     # --- execute ---
-    result = _runtime.runtime_swap(
-        root=PROJ_ROOT,
-        package_name="apathetic_utils",
-        script_name="custom_script",
-        mode="package",  # Use package mode to avoid building
-    )
-
-    # --- verify ---
-    assert result is False  # Package mode returns False
-
-
-def test_runtime_swap_without_script_name() -> None:
-    """Test runtime_swap defaults script_name to package_name."""
-    # --- execute ---
-    result = _runtime.runtime_swap(
-        root=PROJ_ROOT,
-        package_name="apathetic_utils",
-        # script_name=None (default)
-        mode="package",  # Use package mode to avoid building
-    )
+    if script_name is not None:
+        result = _runtime.runtime_swap(
+            root=PROJ_ROOT,
+            package_name="apathetic_utils",
+            script_name=script_name,
+            mode="package",  # Use package mode to avoid building
+        )
+    else:
+        result = _runtime.runtime_swap(
+            root=PROJ_ROOT,
+            package_name="apathetic_utils",
+            mode="package",  # Use package mode to avoid building
+        )
 
     # --- verify ---
     assert result is False  # Package mode returns False

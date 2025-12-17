@@ -549,14 +549,11 @@ def test_is_excluded_raw_invalid_pattern_resolution(tmp_path: Path) -> None:
 
     # --- execute + verify ---
     # Should not crash, should return False
-    # This tests lines 274-276: exception handling for invalid pattern resolution
     assert not mod_autils.is_excluded_raw(file, [pattern], root)
 
 
 def test_is_excluded_raw_pattern_with_glob_chars_and_dotdot(tmp_path: Path) -> None:
-    """is_excluded_raw() should handle patterns with glob chars and ../ (line 257)."""
-    # This test ensures line 257 (pattern resolution for patterns with glob
-    # chars and ../) is covered
+    """is_excluded_raw() should handle patterns with glob chars and ../."""
     # --- setup ---
     root = tmp_path / "config_dir"
     root.mkdir()
@@ -564,7 +561,7 @@ def test_is_excluded_raw_pattern_with_glob_chars_and_dotdot(tmp_path: Path) -> N
     outside_file.parent.mkdir(parents=True)
     outside_file.touch()
 
-    # Pattern with ../ and glob chars (line 235-257)
+    # Pattern with ../ and glob chars
     pattern = "../src/**/test_*.py"
 
     # --- execute + verify ---
@@ -577,9 +574,7 @@ def test_is_excluded_raw_pattern_with_glob_chars_and_dotdot(tmp_path: Path) -> N
 
 
 def test_is_excluded_raw_absolute_pattern_under_root_edge_case(tmp_path: Path) -> None:
-    """is_excluded_raw() should handle absolute patterns under root (lines 291-292)."""
-    # This test ensures lines 291-292 (pattern adjustment for absolute
-    # patterns) are covered
+    """is_excluded_raw() should handle absolute patterns under root."""
     # --- setup ---
     root = tmp_path
     file = root / "subdir" / "file.txt"
@@ -587,7 +582,6 @@ def test_is_excluded_raw_absolute_pattern_under_root_edge_case(tmp_path: Path) -
     file.touch()
 
     # Absolute pattern that's under root but might cause ValueError
-    # Test the ValueError handling in lines 291-292
     abs_pattern = str(root / "subdir" / "*.txt")
 
     # --- execute + verify ---
@@ -603,8 +597,7 @@ def test_is_excluded_raw_absolute_pattern_under_root_edge_case(tmp_path: Path) -
 
 
 def test_is_excluded_raw_directory_only_pattern_edge_case(tmp_path: Path) -> None:
-    """is_excluded_raw() should match directory-only patterns (lines 304-305)."""
-    # This test ensures lines 304-305 (directory-only pattern matching) are covered
+    """is_excluded_raw() should match directory-only patterns."""
     # --- setup ---
     root = tmp_path
     file = root / "dir" / "subdir" / "file.txt"
@@ -612,7 +605,7 @@ def test_is_excluded_raw_directory_only_pattern_edge_case(tmp_path: Path) -> Non
     file.touch()
 
     # --- execute + verify ---
-    # Pattern ending with / should match files in that directory (line 304-305)
+    # Pattern ending with / should match files in that directory
     assert mod_autils.is_excluded_raw(file, ["dir/"], root)
     # Should also match nested files
     nested_file = root / "dir" / "subdir" / "nested" / "file.txt"

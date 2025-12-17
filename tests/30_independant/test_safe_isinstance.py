@@ -128,7 +128,6 @@ def test_tuple_with_ellipsis() -> None:
     tup = tuple[str, ...]
 
     # --- execute and verify ---
-    # This tests lines 140-144: tuple with Ellipsis handling
     assert mod_autils.safe_isinstance(("a",), tup)
     assert mod_autils.safe_isinstance(("a", "b"), tup)
     assert mod_autils.safe_isinstance(("a", "b", "c"), tup)
@@ -138,7 +137,7 @@ def test_tuple_with_ellipsis() -> None:
 
 
 def test_tuple_ellipsis_edge_cases() -> None:
-    """Tuple with Ellipsis should handle edge cases (lines 140-144)."""
+    """Tuple with Ellipsis should handle edge cases."""
     # --- setup ---
     tup = tuple[int, ...]
 
@@ -159,12 +158,9 @@ def test_tuple_mismatched_length() -> None:
     tup = tuple[int, str]
 
     # --- execute and verify ---
-    # This tests lines 135-145: tuple length matching logic
     assert mod_autils.safe_isinstance((1, "a"), tup)
-    assert not mod_autils.safe_isinstance((1,), tup)  # Too short - line 145
-    assert not mod_autils.safe_isinstance(
-        (1, "a", 2), tup
-    )  # Too long - should hit line 145
+    assert not mod_autils.safe_isinstance((1,), tup)  # Too short
+    assert not mod_autils.safe_isinstance((1, "a", 2), tup)  # Too long
     # Test with correct length but wrong types
     assert not mod_autils.safe_isinstance(("a", 1), tup)  # Wrong types
 
@@ -182,22 +178,15 @@ def test_generic_without_args() -> None:
 
 
 def test_isinstance_generics_no_args_early_return() -> None:
-    """_isinstance_generics() should return True early when no args (line 111)."""
-    # This tests line 111: early return when args is empty
-    # We need to call safe_isinstance with a generic that has no args
-    # but still has an origin
-
+    """Generic types without args should return True early."""
     # Use a generic type that has an origin but no args
-    # Create a scenario where origin exists but args is empty
-    # This is tricky - we'll use a type that has origin but empty args
     plain_dict = dict
     # dict without args should have origin=dict and args=()
     origin = get_origin(plain_dict)
     args = get_args(plain_dict)
 
-    # If origin is dict and args is empty, line 111 should be hit
+    # If origin is dict and args is empty, should return True
     if origin is dict and not args:
-        # This should hit the early return at line 111
         result = mod_autils.safe_isinstance({}, plain_dict)
         assert result is True
 
@@ -221,9 +210,7 @@ def test_safe_isinstance_handles_typeerror_gracefully() -> None:
 
 
 def test_safe_isinstance_typeerror_in_typeddict_check() -> None:
-    """safe_isinstance() should handle TypeError in TypedDict check (lines 195-197)."""
-    # This tests lines 195-197: exception handling for non-class types
-
+    """safe_isinstance() should handle TypeError in TypedDict check."""
     # --- setup ---
     # Create something that's not a class but might trigger the TypedDict check
     # We need something that will raise TypeError when checking
@@ -243,8 +230,6 @@ def test_safe_isinstance_typeerror_in_typeddict_check() -> None:
 
 def test_safe_isinstance_typeerror_in_final_isinstance() -> None:
     """safe_isinstance() should handle TypeError in final isinstance check."""
-    # This tests lines 208-210: exception handling in final isinstance fallback
-
     # --- setup ---
     # Create something that will raise TypeError when used with isinstance
     # Use a non-type value that will cause isinstance to raise
@@ -326,13 +311,9 @@ class TestNotRequired:
         assert not mod_autils.safe_isinstance("not a dict", nr)
 
     def test_notrequired_without_args(self) -> None:
-        """NotRequired without args should return True (line 172)."""
-        # This tests line 172: return True when NotRequired has no args
-        # Note: NotRequired without args is unusual, but we test the path
-
+        """NotRequired without args should return a boolean."""
         # NotRequired by itself (no args) - this is edge case
         # The actual behavior depends on how get_origin/get_args work
-        # But we want to ensure line 172 is covered
         result = mod_autils.safe_isinstance("anything", NotRequired)
         # Should return a boolean (implementation may vary)
         assert isinstance(result, bool)

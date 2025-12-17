@@ -4,30 +4,32 @@
 import tempfile
 from pathlib import Path
 
+import pytest
+
 import apathetic_utils as mod_autils
 
 
-def test_shorten_path_basic() -> None:
+@pytest.mark.parametrize(
+    ("path_input", "base_input"),
+    [
+        # String inputs
+        (
+            "/home/user/code/serger/src/serger/logs.py",
+            "/home/user/code/serger/tests/utils/patch_everywhere.py",
+        ),
+        # Path object inputs
+        (
+            Path("/home/user/code/serger/src/serger/logs.py"),
+            Path("/home/user/code/serger/tests/utils/patch_everywhere.py"),
+        ),
+    ],
+)
+def test_shorten_path_with_common_prefix(
+    path_input: str | Path, base_input: str | Path
+) -> None:
     """shorten_path() should return relative path when paths share prefix."""
-    # --- setup ---
-    path = "/home/user/code/serger/src/serger/logs.py"
-    base = "/home/user/code/serger/tests/utils/patch_everywhere.py"
-
     # --- execute ---
-    result = mod_autils.shorten_path(path, base)
-
-    # --- verify ---
-    assert result == "src/serger/logs.py"
-
-
-def test_shorten_path_with_path_objects() -> None:
-    """shorten_path() should work with Path objects."""
-    # --- setup ---
-    path = Path("/home/user/code/serger/src/serger/logs.py")
-    base = Path("/home/user/code/serger/tests/utils/patch_everywhere.py")
-
-    # --- execute ---
-    result = mod_autils.shorten_path(path, base)
+    result = mod_autils.shorten_path(path_input, base_input)
 
     # --- verify ---
     assert result == "src/serger/logs.py"
@@ -47,30 +49,24 @@ def test_shorten_path_no_common_prefix() -> None:
     assert result == "/home/user/file1.py"
 
 
-def test_shorten_path_identical_paths() -> None:
-    """shorten_path() should return '.' when paths are identical."""
-    # --- setup ---
-    path = "/home/user/file.py"
-    base = "/home/user/file.py"
-
+@pytest.mark.parametrize(
+    ("path", "base", "expected"),
+    [
+        # Identical paths
+        ("/home/user/file.py", "/home/user/file.py", "."),
+        # Empty result (directory paths)
+        ("/home/user", "/home/user", "."),
+        # One path is prefix of other
+        ("/home/user/code/file.py", "/home/user/code", "file.py"),
+    ],
+)
+def test_shorten_path_special_cases(path: str, base: str, expected: str) -> None:
+    """shorten_path() should handle special cases like identical paths and prefixes."""
     # --- execute ---
     result = mod_autils.shorten_path(path, base)
 
     # --- verify ---
-    assert result == "."
-
-
-def test_shorten_path_one_is_prefix_of_other() -> None:
-    """shorten_path() should handle when one path is prefix of other."""
-    # --- setup ---
-    path = "/home/user/code/file.py"
-    base = "/home/user/code"
-
-    # --- execute ---
-    result = mod_autils.shorten_path(path, base)
-
-    # --- verify ---
-    assert result == "file.py"
+    assert result == expected
 
 
 def test_shorten_path_relative_paths() -> None:
@@ -88,22 +84,8 @@ def test_shorten_path_relative_paths() -> None:
     # Result depends on current working directory, but should be a valid path
 
 
-def test_shorten_path_empty_result() -> None:
-    """shorten_path() should return '.' for empty result."""
-    # --- setup ---
-    path = "/home/user"
-    base = "/home/user"
-
-    # --- execute ---
-    result = mod_autils.shorten_path(path, base)
-
-    # --- verify ---
-    assert result == "."
-
-
 def test_shorten_path_comprehensive() -> None:
-    """shorten_path() should handle all code paths (lines 101-113)."""
-    # This test ensures all lines 101-113 are covered
+    """shorten_path() should handle paths with common prefixes."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
 
@@ -116,7 +98,6 @@ def test_shorten_path_comprehensive() -> None:
         path2.touch()
 
         # Test with paths that share common prefix
-        # This exercises lines 101-113
         result = mod_autils.shorten_path(path1, path2)
 
         # Verify result
@@ -126,8 +107,7 @@ def test_shorten_path_comprehensive() -> None:
 
 
 def test_shorten_path_path_resolution() -> None:
-    """shorten_path() should resolve paths correctly (lines 101-102)."""
-    # This test ensures lines 101-102 (Path.resolve()) are covered
+    """shorten_path() should resolve paths correctly."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
 
@@ -147,8 +127,7 @@ def test_shorten_path_path_resolution() -> None:
 
 
 def test_shorten_path_zip_longest_logic() -> None:
-    """shorten_path() should use zip_longest correctly (lines 105-109)."""
-    # This test ensures lines 105-109 (zip_longest loop) are covered
+    """Use zip_longest correctly for paths of different lengths."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
 
@@ -161,7 +140,6 @@ def test_shorten_path_zip_longest_logic() -> None:
         short_path.touch()
 
         # Test with different length paths
-        # This exercises zip_longest with different lengths
         result = mod_autils.shorten_path(long_path, short_path)
 
         # Verify result
@@ -171,8 +149,7 @@ def test_shorten_path_zip_longest_logic() -> None:
 
 
 def test_shorten_path_slice_remaining() -> None:
-    """shorten_path() should slice remaining parts correctly (lines 111-113)."""
-    # This test ensures lines 111-113 (slicing and return) are covered
+    """shorten_path() should slice remaining parts correctly."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
 
@@ -194,8 +171,7 @@ def test_shorten_path_slice_remaining() -> None:
 
 
 def test_shorten_path_empty_remaining() -> None:
-    """shorten_path() should return '.' when remaining is empty (line 113)."""
-    # This test ensures line 113 (empty remaining -> ".") is covered
+    """shorten_path() should return '.' when remaining is empty."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
 
@@ -208,56 +184,45 @@ def test_shorten_path_empty_remaining() -> None:
         # When paths are identical, remaining should be empty
         result = mod_autils.shorten_path(path1, path2)
 
-        # Should return "." when remaining is empty (line 113)
+        # Should return "." when remaining is empty
         assert result == "."
 
 
-def test_shorten_path_multiple_bases() -> None:
-    """shorten_path() should return shortest when multiple bases provided."""
-    # --- setup ---
-    path = "/home/user/code/serger/src/logs.py"
-    bases: list[str | Path] = [
-        # Common: /home/user/code/serger -> "src/logs.py"
-        "/home/user/code/serger/tests/utils/patch.py",
-        # Common: /home/user/code/serger/src -> "logs.py"
-        "/home/user/code/serger/src",
-    ]
-
+@pytest.mark.parametrize(
+    ("path", "bases", "expected"),
+    [
+        # Multiple bases - should return shortest
+        (
+            "/home/user/code/serger/src/logs.py",
+            [
+                "/home/user/code/serger/tests/utils/patch.py",
+                "/home/user/code/serger/src",
+            ],
+            "logs.py",
+        ),
+        # Single string base
+        (
+            "/home/user/code/serger/src/logs.py",
+            "/home/user/code/serger/tests/utils/patch.py",
+            "src/logs.py",
+        ),
+        # Multiple bases with different prefixes
+        (
+            "/home/user/project1/src/file.py",
+            [
+                "/home/user/project2/tests/test.py",
+                "/home/user/project1/src/utils/helper.py",
+            ],
+            "file.py",
+        ),
+    ],
+)
+def test_shorten_path_multiple_bases(
+    path: str, bases: str | list[str | Path], expected: str
+) -> None:
+    """shorten_path() should return shortest path when multiple bases provided."""
     # --- execute ---
     result = mod_autils.shorten_path(path, bases)
 
     # --- verify ---
-    # Should return shortest: "logs.py" (from second base)
-    assert result == "logs.py"
-
-
-def test_shorten_path_multiple_bases_single_string() -> None:
-    """shorten_path() should accept single string or Path as bases."""
-    # --- setup ---
-    path = "/home/user/code/serger/src/logs.py"
-    bases = "/home/user/code/serger/tests/utils/patch.py"
-
-    # --- execute ---
-    result = mod_autils.shorten_path(path, bases)
-
-    # --- verify ---
-    assert result == "src/logs.py"
-
-
-def test_shorten_path_multiple_bases_different_prefixes() -> None:
-    """shorten_path() should find shortest across bases with different prefixes."""
-    # --- setup ---
-    path = "/home/user/project1/src/file.py"
-    bases: list[str | Path] = [
-        # Common: /home/user -> "project1/src/file.py"
-        "/home/user/project2/tests/test.py",
-        # Common: /home/user/project1/src -> "file.py"
-        "/home/user/project1/src/utils/helper.py",
-    ]
-
-    # --- execute ---
-    result = mod_autils.shorten_path(path, bases)
-
-    # --- verify ---
-    # Should return shortest: "file.py" (from second base)
-    assert result == "file.py"
+    assert result == expected

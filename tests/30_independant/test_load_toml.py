@@ -63,8 +63,6 @@ def test_load_toml_missing_tomli_required_false(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """load_toml() should return None when tomli is missing and required=False."""
-    # This test ensures lines 136-153 (error handling for missing tomli)
-    # are covered
     # --- setup ---
     toml_file = tmp_path / "test.toml"
     toml_file.write_text('[project]\nname = "test"')
@@ -85,7 +83,6 @@ def test_load_toml_missing_tomli_required_false(
     result = mod_autils.load_toml(toml_file, required=False)
 
     # --- verify ---
-    # Should return None (line 153)
     assert result is None
 
 
@@ -93,8 +90,6 @@ def test_load_toml_missing_tomli_required_true(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """load_toml() should raise RuntimeError when tomli is missing and required=True."""
-    # This test ensures lines 145-152 (RuntimeError when required=True)
-    # are covered
     # --- setup ---
     toml_file = tmp_path / "test.toml"
     toml_file.write_text('[project]\nname = "test"')
@@ -109,6 +104,6 @@ def test_load_toml_missing_tomli_required_true(
     monkeypatch.setattr("builtins.__import__", mock_import)
 
     # --- execute and verify ---
-    # With required=True, should raise RuntimeError (lines 145-152)
+    # With required=True, should raise RuntimeError
     with pytest.raises(RuntimeError, match="TOML parsing requires 'tomli' package"):
         mod_autils.load_toml(toml_file, required=True)

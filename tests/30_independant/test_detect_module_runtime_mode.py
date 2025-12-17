@@ -9,49 +9,35 @@ import pytest
 import apathetic_utils as mod_apathetic_utils
 
 
-def test_detect_module_runtime_mode_returns_package() -> None:
-    """detect_module_runtime_mode should return 'package' for regular modules."""
-    regular_module = ModuleType("regular_module")
-    regular_module.__file__ = "/path/to/regular_module.py"
+@pytest.mark.parametrize(
+    ("module_attrs", "expected_mode"),
+    [
+        # Regular module
+        ({"__file__": "/path/to/regular_module.py"}, "package"),
+        # Stitched module
+        ({"__STITCHED__": True}, "stitched"),
+        # Standalone module
+        ({"__STANDALONE__": True}, "stitched"),
+        # Zipapp module (with .pyz in path)
+        ({"__file__": "/path/to/archive.pyz/module.py"}, "zipapp"),
+        # Zipapp module (ending with .pyz)
+        ({"__file__": "/path/to/archive.pyz"}, "zipapp"),
+    ],
+)
+def test_detect_module_runtime_mode(
+    module_attrs: dict[str, object], expected_mode: str
+) -> None:
+    """Return correct mode for different module types."""
+    # --- setup ---
+    module = ModuleType("test_module")
+    for attr, value in module_attrs.items():
+        setattr(module, attr, value)
 
-    result = mod_apathetic_utils.detect_module_runtime_mode(regular_module)
-    assert result == "package", "Regular modules should be detected as 'package'"
+    # --- execute ---
+    result = mod_apathetic_utils.detect_module_runtime_mode(module)
 
-
-def test_detect_module_runtime_mode_returns_stitched() -> None:
-    """detect_module_runtime_mode should return 'stitched' for stitched modules."""
-    stitched_module = ModuleType("stitched_module")
-    stitched_module.__STITCHED__ = True  # type: ignore[attr-defined]
-
-    result = mod_apathetic_utils.detect_module_runtime_mode(stitched_module)
-    assert result == "stitched", "Modules with __STITCHED__ should be 'stitched'"
-
-
-def test_detect_module_runtime_mode_returns_stitched_for_standalone() -> None:
-    """detect_module_runtime_mode should return 'stitched' for __STANDALONE__."""
-    standalone_module = ModuleType("standalone_module")
-    standalone_module.__STANDALONE__ = True  # type: ignore[attr-defined]
-
-    result = mod_apathetic_utils.detect_module_runtime_mode(standalone_module)
-    assert result == "stitched", "Modules with __STANDALONE__ should be 'stitched'"
-
-
-def test_detect_module_runtime_mode_returns_zipapp() -> None:
-    """detect_module_runtime_mode should return 'zipapp' for zipapp modules."""
-    zipapp_module = ModuleType("zipapp_module")
-    zipapp_module.__file__ = "/path/to/archive.pyz/module.py"
-
-    result = mod_apathetic_utils.detect_module_runtime_mode(zipapp_module)
-    assert result == "zipapp", "Modules in .pyz should be detected as 'zipapp'"
-
-
-def test_detect_module_runtime_mode_zipapp_ending_with_pyz() -> None:
-    """detect_module_runtime_mode should detect .pyz files."""
-    zipapp_module = ModuleType("zipapp_module")
-    zipapp_module.__file__ = "/path/to/archive.pyz"
-
-    result = mod_apathetic_utils.detect_module_runtime_mode(zipapp_module)
-    assert result == "zipapp", "Files ending with .pyz should be 'zipapp'"
+    # --- verify ---
+    assert result == expected_mode
 
 
 def test_detect_module_runtime_mode_prefers_marker_over_path() -> None:

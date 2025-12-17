@@ -1,52 +1,41 @@
 # tests/30_independant/test_has_glob_chars.py
 """Tests for has_glob_chars utility function."""
 
+import pytest
+
 import apathetic_utils as mod_autils
 
 
-def test_has_glob_chars_with_star() -> None:
-    """has_glob_chars() should return True for patterns with '*'."""
+@pytest.mark.parametrize(
+    ("pattern", "expected"),
+    [
+        # Patterns with glob characters - should return True
+        ("*.py", True),
+        ("file*.txt", True),
+        ("**/*.py", True),
+        ("file?.txt", True),
+        ("test_?.py", True),
+        ("file[0-9].txt", True),
+        ("test_[abc].py", True),
+        # Patterns without glob characters - should return False
+        ("file.txt", False),
+        ("path/to/file", False),
+        ("", False),
+        ("normal_string", False),
+        ("plain_text_no_glob", False),
+        ("path/to/file.txt", False),
+        ("normal_directory_name", False),
+        ("123456", False),
+    ],
+)
+def test_has_glob_chars(pattern: str, expected: bool) -> None:  # noqa: FBT001
+    """has_glob_chars() should correctly detect glob characters in patterns."""
     # --- execute and verify ---
-    assert mod_autils.has_glob_chars("*.py")
-    assert mod_autils.has_glob_chars("file*.txt")
-    assert mod_autils.has_glob_chars("**/*.py")
-
-
-def test_has_glob_chars_with_question_mark() -> None:
-    """has_glob_chars() should return True for patterns with '?'."""
-    # --- execute and verify ---
-    assert mod_autils.has_glob_chars("file?.txt")
-    assert mod_autils.has_glob_chars("test_?.py")
-
-
-def test_has_glob_chars_with_brackets() -> None:
-    """has_glob_chars() should return True for patterns with '[]'."""
-    # --- execute and verify ---
-    assert mod_autils.has_glob_chars("file[0-9].txt")
-    assert mod_autils.has_glob_chars("test_[abc].py")
-
-
-def test_has_glob_chars_without_glob_chars() -> None:
-    """has_glob_chars() should return False for patterns without glob characters."""
-    # --- execute and verify ---
-    assert not mod_autils.has_glob_chars("file.txt")
-    assert not mod_autils.has_glob_chars("path/to/file")
-    assert not mod_autils.has_glob_chars("")
-    assert not mod_autils.has_glob_chars("normal_string")
-
-
-def test_has_glob_chars_mixed() -> None:
-    """has_glob_chars() should detect any glob character."""
-    # --- execute and verify ---
-    assert mod_autils.has_glob_chars("file*.txt")
-    assert mod_autils.has_glob_chars("file?.txt")
-    assert mod_autils.has_glob_chars("file[0-9].txt")
-    assert mod_autils.has_glob_chars("**/*.py")
+    assert mod_autils.has_glob_chars(pattern) == expected
 
 
 def test_has_glob_chars_false_return_path() -> None:
-    """has_glob_chars() should return False when no glob chars found (line 62)."""
-    # This test ensures line 62 (False return path) is covered
+    """has_glob_chars() should return False when no glob chars found."""
     # --- execute and verify ---
     result = mod_autils.has_glob_chars("plain_text_no_glob")
     assert result is False
